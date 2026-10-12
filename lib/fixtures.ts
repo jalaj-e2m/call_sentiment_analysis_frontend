@@ -135,7 +135,7 @@ function build(now: number) {
             triggerSource: index % 4 === 0 ? "manual" : "auto",
             createdAt: new Date(new Date(startedAt).getTime() + 2 * 60 * 60 * 1000).toISOString(),
             dropped: { non_client: moments.length ? 1 : 6, duplicate: 0 },
-            stats: null,
+            stats: { client_speech_share: 0.42, moments_proposed: moments.length + 1, moments_kept: moments.length },
             moments,
           };
     const call: CallRow = {
@@ -164,7 +164,12 @@ function build(now: number) {
 
   const lowEvidence = calls[6]!;
   const lowDetail = details.get(lowEvidence.id)!;
-  lowDetail.analysis = { ...lowDetail.analysis!, moments: [], dropped: { non_client: 7, duplicate: 0 } };
+  lowDetail.analysis = {
+    ...lowDetail.analysis!,
+    moments: [],
+    dropped: { non_client: 7, duplicate: 0 },
+    stats: { client_speech_share: 0.04, moments_proposed: 7, moments_kept: 0 },
+  };
   lowEvidence.analysis = { ...lowEvidence.analysis!, moments: [] };
 
   return { calls, details };

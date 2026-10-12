@@ -70,6 +70,14 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
               <p className="mt-2 text-xs text-zinc-500">
                 {analysis.triggerSource === "manual" ? "Manual analysis" : "Automatic analysis"} · {formatDate(analysis.createdAt)}
               </p>
+              {typeof analysis.stats?.client_speech_share === "number" ? (
+                <p className="mt-1 text-xs text-zinc-500">
+                  Client speech {Math.round(analysis.stats.client_speech_share * 100)}% of the transcript
+                  {typeof analysis.stats.moments_proposed === "number"
+                    ? ` · ${analysis.stats.moments_kept ?? 0} of ${analysis.stats.moments_proposed} proposed moments kept`
+                    : ""}
+                </p>
+              ) : null}
               <div className="mt-3">
                 <LowEvidenceNotice analysis={analysis} />
               </div>
