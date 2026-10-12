@@ -248,6 +248,9 @@ describe("Fathom sync helpers", () => {
     expect(describeSyncResult({ new_calls: 1, rejected: { internal_no_external_attendees: 1 } })).toBe(
       "1 new client call · 1 non-client meeting skipped",
     );
+    expect(describeSyncResult({ new_calls: 0, callsMerged: 1 })).toBe(
+      "No new client calls · 1 recording added to a call a colleague already synced",
+    );
   });
 
   it("runs work with bounded concurrency and finishes every item", async () => {

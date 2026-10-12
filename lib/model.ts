@@ -114,6 +114,7 @@ export interface SyncResult {
   manual_only?: number;
   skipped?: number;
   importedElsewhere?: number;
+  callsMerged?: number;
   matched?: number;
   failed?: number;
   rejected?: Record<string, number>;

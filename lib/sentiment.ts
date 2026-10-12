@@ -315,6 +315,9 @@ export function describeSyncResult(result: SyncResult | null | undefined): strin
   ];
   const already = (result.skipped ?? 0) + (result.importedElsewhere ?? 0);
   if (already) parts.push(`${already} already imported`);
+  if (result.callsMerged) {
+    parts.push(`${plural(result.callsMerged, "recording")} added to a call a colleague already synced`);
+  }
   const rejected = Object.values(result.rejected ?? {}).reduce((n, v) => n + v, 0);
   if (rejected) parts.push(`${plural(rejected, "non-client meeting")} skipped`);
   if (result.failed) parts.push(`${result.failed} failed`);
