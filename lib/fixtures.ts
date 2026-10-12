@@ -7,6 +7,7 @@ import type {
   CallDetail,
   CallRow,
   ClientRow,
+  FathomAccount,
   Moment,
   Profile,
   Segment,
@@ -178,6 +179,15 @@ function build(now: number) {
 export function fixtureData(now = Date.now()) {
   return build(now);
 }
+
+export const FIXTURE_FATHOM_ACCOUNT: FathomAccount = {
+  connected: true,
+  keyLast4: "a1b2",
+  syncStatus: "idle",
+  lastSyncAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  lastSyncError: null,
+  lastSyncResult: { fetched: 6, new_calls: 2, manual_only: 1, skipped: 3, matched: 2, failed: 0, rejected: { internal_no_external_attendees: 1 } },
+};
 
 export const FIXTURE_SETTINGS: SettingsData = {
   settings: [

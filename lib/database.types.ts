@@ -66,6 +66,20 @@ export interface Database {
       }>;
       recording_transcripts: Table<{ recording_id: string; segments: Json; full_text: string | null }>;
       app_settings: Table<{ key: string; value: Json }>;
+      fathom_accounts: Table<{
+        id: string;
+        owner_id: string | null;
+        label: string;
+        active: boolean;
+        vault_secret_id: string | null;
+        key_last4: string | null;
+        sync_status: "idle" | "running" | "failed";
+        sync_started_at: string | null;
+        last_sync_at: string | null;
+        last_sync_error: string | null;
+        last_sync_result: Json | null;
+        synced_through: string | null;
+      }>;
       prompt_versions: Table<{
         id: string;
         name: string;

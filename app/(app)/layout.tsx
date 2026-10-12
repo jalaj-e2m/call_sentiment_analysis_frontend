@@ -1,7 +1,11 @@
-import Link from "next/link";
+import { ShieldAlert } from "lucide-react";
 import { redirect } from "next/navigation";
-import { Nav, SignOutButton, ThemeToggle } from "@/components/shell";
+import { AppShell, SignOutButton } from "@/components/shell";
+import { SyncProvider } from "@/components/sync";
 import { getViewer } from "@/lib/auth";
+import type { FathomAccount } from "@/lib/model";
+import { getFathomAccount } from "@/lib/queries";
+import { getDb } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const viewer = await getViewer();
@@ -9,37 +13,42 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (viewer.kind === "no-access") {
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 p-6 text-center">
-        <h1 className="text-2xl font-semibold">No access</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Your account does not have access to call sentiment. Ask an admin if you think this is wrong.
-        </p>
-        <SignOutButton />
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <span className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+            <ShieldAlert className="h-5 w-5" aria-hidden />
+          </span>
+          <h1 className="text-lg font-semibold">No access</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Your account does not have access to call sentiment. Ask an admin if you think this is wrong.
+          </p>
+          <div className="mt-6 flex justify-center">
+            <SignOutButton variant="button" />
+          </div>
+        </div>
       </main>
     );
   }
 
-  return (
-    <div className="min-h-screen">
-      {viewer.fixtures ? (
-        <div className="bg-amber-100 px-4 py-1.5 text-center text-xs text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
-          Preview with fake fixture data. Set the Supabase variables in .env.local to use real data.
-        </div>
-      ) : null}
-      <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3">
-          <Link href="/" className="mr-2 font-semibold tracking-tight">
-            Call Sentiment
-          </Link>
-          <Nav isAdmin={viewer.profile.role === "admin"} />
-          <div className="ml-auto flex items-center gap-2">
-            <span className="hidden text-xs text-zinc-500 sm:inline">{viewer.profile.fullName ?? viewer.profile.email}</span>
-            <ThemeToggle />
-            <SignOutButton />
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+  // The sidebar must not take every page down if the Fathom migration is not applied yet.
+  let account: FathomAccount | null = null;
+  try {
+    account = await getFathomAccount(await getDb(), viewer.profile.id);
+  } catch {
+    account = null;
+  }
+
+  const banner = viewer.fixtures ? (
+    <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-xs text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+      Preview with fake fixture data. Set the Supabase variables in .env.local to use real data.
     </div>
+  ) : null;
+
+  return (
+    <SyncProvider account={account}>
+      <AppShell profile={viewer.profile} banner={banner}>
+        {children}
+      </AppShell>
+    </SyncProvider>
   );
 }

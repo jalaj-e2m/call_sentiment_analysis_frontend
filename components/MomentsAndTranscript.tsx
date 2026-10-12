@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Moment, Segment } from "@/lib/model";
 import { findSegmentForMoment, formatTimestamp } from "@/lib/sentiment";
 import { EmotionChip, IntensityDots } from "./sentiment";
-import { Card, EmptyState, Notice, buttonClass } from "./ui";
+import { Card, EmptyState, Notice, smallButtonClass } from "./ui";
 
 const PAGE_SIZE = 100;
 
@@ -57,7 +57,7 @@ export function MomentsAndTranscript({ moments, segments }: { moments: Moment[];
                     type="button"
                     onClick={() => jumpTo(target)}
                     disabled={target === null}
-                    className="w-full rounded-lg border border-zinc-200 p-3 text-left hover:border-zinc-400 disabled:cursor-default dark:border-zinc-800 dark:hover:border-zinc-600"
+                    className="w-full rounded-lg border border-zinc-200 p-3 text-left transition-colors hover:border-indigo-300 hover:bg-zinc-50/60 disabled:cursor-default dark:border-zinc-800 dark:hover:border-indigo-500/40 dark:hover:bg-zinc-800/30"
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <EmotionChip emotion={m.emotion} polarity={m.polarity} />
@@ -119,13 +119,13 @@ export function MomentsAndTranscript({ moments, segments }: { moments: Moment[];
             </ol>
             {pages > 1 ? (
               <div className="mt-3 flex items-center justify-between text-xs">
-                <button type="button" className={buttonClass} disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                <button type="button" className={smallButtonClass} disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
                   Previous
                 </button>
                 <span>
                   Page {page + 1} of {pages}
                 </span>
-                <button type="button" className={buttonClass} disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)}>
+                <button type="button" className={smallButtonClass} disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)}>
                   Next
                 </button>
               </div>

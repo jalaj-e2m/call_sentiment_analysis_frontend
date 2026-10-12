@@ -1,5 +1,6 @@
 "use client";
 
+import { Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { AnalysisStatus, CallRow, ClientRow, SentimentLabel } from "@/lib/model";
@@ -7,12 +8,10 @@ import { canAnalyze, canRetry, formatDate, formatDuration, isInProgress } from "
 import { AnalyzeButton } from "./AnalyzeButton";
 import { AutoRefresh } from "./AutoRefresh";
 import { SentimentBadge, StatusPill } from "./sentiment";
-import { EmptyState, TableWrap, linkClass, td, th } from "./ui";
-
-const selectClass =
-  "rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+import { EmptyState, TableWrap, linkClass, rowClass, selectClass, surfaceClass, td, th } from "./ui";
 
 export function CallsTable({ calls, clients }: { calls: CallRow[]; clients: ClientRow[] }) {
+  const [query, setQuery] = useState("");
   const [client, setClient] = useState("");
   const [label, setLabel] = useState<"" | SentimentLabel | "none">("");
   const [status, setStatus] = useState<"" | AnalysisStatus>("");
@@ -22,24 +21,35 @@ export function CallsTable({ calls, clients }: { calls: CallRow[]; clients: Clie
 
   const effectiveStatus = (c: CallRow): AnalysisStatus => (pending[c.id] === c.status ? "queued" : c.status);
 
-  const rows = useMemo(
-    () =>
-      calls.filter(
-        (c) =>
-          (!client || c.clientId === client) &&
-          (!label || (label === "none" ? !c.analysis : c.analysis?.label === label)) &&
-          (!status || c.status === status) &&
-          (!manualOnly || c.requiresManual),
-      ),
-    [calls, client, label, status, manualOnly],
-  );
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return calls.filter(
+      (c) =>
+        (!q || `${c.title ?? ""} ${c.clientName}`.toLowerCase().includes(q)) &&
+        (!client || c.clientId === client) &&
+        (!label || (label === "none" ? !c.analysis : c.analysis?.label === label)) &&
+        (!status || c.status === status) &&
+        (!manualOnly || c.requiresManual),
+    );
+  }, [calls, query, client, label, status, manualOnly]);
 
   const polling = calls.some((c) => isInProgress(c.status) || pending[c.id] === c.status);
 
   return (
-    <div>
+    <section className={surfaceClass}>
       <AutoRefresh active={polling} />
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-5 py-3 text-sm dark:border-zinc-800">
+        <label className="relative">
+          <span className="sr-only">Search calls</span>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search title or client"
+            className={`${selectClass} w-56 pl-8`}
+          />
+        </label>
         <select aria-label="Client" className={selectClass} value={client} onChange={(e) => setClient(e.target.value)}>
           <option value="">All clients</option>
           {clients.map((c) => (
@@ -63,15 +73,24 @@ export function CallsTable({ calls, clients }: { calls: CallRow[]; clients: Clie
           <option value="done">Done</option>
           <option value="failed">Failed</option>
         </select>
-        <label className="inline-flex items-center gap-1.5">
-          <input type="checkbox" checked={manualOnly} onChange={(e) => setManualOnly(e.target.checked)} />
+        <label className="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
+          <input
+            type="checkbox"
+            className="h-3.5 w-3.5 rounded accent-indigo-600"
+            checked={manualOnly}
+            onChange={(e) => setManualOnly(e.target.checked)}
+          />
           Manual only
         </label>
-        <span className="ml-auto text-xs text-zinc-500">{rows.length} calls</span>
+        <span className="ml-auto text-xs tabular-nums text-zinc-500">
+          {rows.length} of {calls.length}
+        </span>
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState title="No calls match these filters." />
+        <div className="p-5">
+          <EmptyState title="No calls match these filters." />
+        </div>
       ) : (
         <TableWrap>
           <thead>
@@ -89,16 +108,20 @@ export function CallsTable({ calls, clients }: { calls: CallRow[]; clients: Clie
             {rows.map((c) => {
               const shown = effectiveStatus(c);
               return (
-                <tr key={c.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
-                  <td className={`${td} whitespace-nowrap`}>{formatDate(c.startedAt)}</td>
-                  <td className={td}>{c.clientName}</td>
+                <tr key={c.id} className={rowClass}>
+                  <td className={`${td} whitespace-nowrap text-zinc-500`}>{formatDate(c.startedAt)}</td>
+                  <td className={`${td} whitespace-nowrap`}>{c.clientName}</td>
                   <td className={td}>
                     <Link href={`/calls/${c.id}`} className={linkClass}>
                       {c.title || "Untitled call"}
                     </Link>
-                    {c.requiresManual ? <span className="ml-2 text-xs text-zinc-500">manual</span> : null}
+                    {c.requiresManual ? (
+                      <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                        manual
+                      </span>
+                    ) : null}
                   </td>
-                  <td className={`${td} whitespace-nowrap`}>{formatDuration(c.durationSeconds)}</td>
+                  <td className={`${td} whitespace-nowrap text-zinc-500`}>{formatDuration(c.durationSeconds)}</td>
                   <td className={td}>
                     <SentimentBadge label={c.analysis?.label} score={c.analysis?.score} />
                   </td>
@@ -115,6 +138,7 @@ export function CallsTable({ calls, clients }: { calls: CallRow[]; clients: Clie
                         <AnalyzeButton
                           callId={c.id}
                           retry={canRetry(c)}
+                          size="small"
                           onStart={() => setPending((p) => ({ ...p, [c.id]: c.status }))}
                           onDone={() =>
                             setPending((p) => {
@@ -133,6 +157,6 @@ export function CallsTable({ calls, clients }: { calls: CallRow[]; clients: Clie
           </tbody>
         </TableWrap>
       )}
-    </div>
+    </section>
   );
 }

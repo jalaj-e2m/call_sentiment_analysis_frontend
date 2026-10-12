@@ -24,3 +24,14 @@ One line per choice made while building without questions.
 - Google fonts were removed so the build needs no network. The UI uses the system font stack.
 - `@types/node` is ^24 because vitest 5 requires it as a peer dependency.
 - Transcript speaker emails are never selected into the UI. Only names and text are shown.
+
+## Fathom connect, manual sync and UI redesign
+
+- Each staff user connects their own Fathom account on the new Fathom page. The key goes once to the `fathom` Edge Function, which tests it with Fathom and stores it in Supabase Vault. The browser only ever sees the last 4 characters; `fathom_accounts` is read through RLS (owner can read own row).
+- "Sync now" lives in the sidebar and on the Fathom page; both share one `SyncProvider` so a sync started anywhere shows progress everywhere. The first sync takes the last 20 meetings; later syncs take everything since the previous one (the backend owns these numbers).
+- After a sync the browser analyses new non-manual calls itself, two at a time, through `analyze-call`. Edge Functions have a short wall clock, so chaining analysis server-side was not an option without a queue. If the tab closes early, the remaining calls keep an Analyze button.
+- The Analyze button now shows for any call without an analysis (not only manual-only calls), so calls left over from an interrupted sync can be analysed by hand. This supersedes the Milestone A rule above.
+- The sidebar treats a missing `fathom_accounts` column (migration not pushed) as "not connected" rather than failing every page; the Fathom page shows the error.
+- A truncated sync (more than 100 new meetings) imports the newest 100 and says so; the older ones need the backend backfill script. Clicking Sync again would not recover them because the sync point moves forward.
+- Sync results shown in the UI are counts only, never titles, names or emails.
+- UI: left sidebar (drawer on mobile), neutral zinc greys with one indigo accent, Geist Sans via the `geist` package (bundled locally, so the build still needs no network), icons from `lucide-react`. Sentiment colours are unchanged.

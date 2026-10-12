@@ -97,6 +97,30 @@ export interface CallDetail {
   segments: Segment[];
 }
 
+/** Counts from the last manual sync (fathom Edge Function); never titles or names. */
+export interface SyncResult {
+  fetched?: number;
+  new_calls?: number;
+  manual_only?: number;
+  skipped?: number;
+  importedElsewhere?: number;
+  matched?: number;
+  failed?: number;
+  rejected?: Record<string, number>;
+  truncated?: boolean;
+  first_sync?: boolean;
+}
+
+/** The signed-in user's own Fathom connection. The key itself never reaches the browser. */
+export interface FathomAccount {
+  connected: boolean;
+  keyLast4: string | null;
+  syncStatus: "idle" | "running" | "failed";
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  lastSyncResult: SyncResult | null;
+}
+
 export interface SettingsData {
   settings: { key: string; value: unknown }[];
   prompt: { name: string; version: number; model: string; createdAt: string } | null;

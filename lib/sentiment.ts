@@ -1,5 +1,5 @@
 /** Pure presentation and aggregation logic. No I/O; every function is unit-tested. */
-import type { AnalysisDetail, CallRow, ClientRow, Polarity, Segment, SentimentLabel } from "./model";
+import type { AnalysisDetail, CallRow, ClientRow, Polarity, Segment, SentimentLabel, SyncResult } from "./model";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const RECENT_DAYS = 30;
@@ -72,6 +72,13 @@ export function formatDate(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "–";
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "–";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "–";
+  return d.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 // Evidence ------------------------------------------------------------------------------------
@@ -217,5 +224,56 @@ export function negativeTopicCounts(calls: CallRow[]): { topic: string; count: n
 }
 
 export const isInProgress = (status: CallRow["status"]) => status === "running" || status === "queued";
-export const canAnalyze = (call: CallRow) => call.requiresManual && !call.analysis && !isInProgress(call.status) && call.status !== "failed";
+/** Any call without an analysis can be analysed by hand (manual-only calls, and auto calls left over after a sync). */
+export const canAnalyze = (call: CallRow) => !call.analysis && !isInProgress(call.status) && call.status !== "failed";
 export const canRetry = (call: CallRow) => call.status === "failed";
+
+// Fathom sync ---------------------------------------------------------------------------------
+
+/** "just now", "5 min ago", "3 h ago", "2 d ago", else a date. */
+export function formatRelative(iso: string | null | undefined, now: Date): string {
+  if (!iso) return "never";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "never";
+  const minutes = Math.floor((now.getTime() - t) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} h ago`;
+  if (minutes < 7 * 24 * 60) return `${Math.floor(minutes / (24 * 60))} d ago`;
+  return formatDate(iso);
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** One line describing a sync result, e.g. "2 new client calls (1 manual-only) · 3 already imported". */
+export function describeSyncResult(result: SyncResult | null | undefined): string {
+  if (!result) return "No sync yet.";
+  const newCalls = result.new_calls ?? 0;
+  const parts = [
+    newCalls === 0
+      ? "No new client calls"
+      : `${plural(newCalls, "new client call")}${result.manual_only ? ` (${result.manual_only} manual-only)` : ""}`,
+  ];
+  const already = (result.skipped ?? 0) + (result.importedElsewhere ?? 0);
+  if (already) parts.push(`${already} already imported`);
+  const rejected = Object.values(result.rejected ?? {}).reduce((n, v) => n + v, 0);
+  if (rejected) parts.push(`${plural(rejected, "non-client meeting")} skipped`);
+  if (result.failed) parts.push(`${result.failed} failed`);
+  return parts.join(" · ");
+}
+
+/** Run `worker` over `items` with at most `limit` in flight; resolves when all are done. */
+export async function runWithConcurrency<T>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      await worker(items[index]!, index);
+    }
+  });
+  await Promise.all(lanes);
+}

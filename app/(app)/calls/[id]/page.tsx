@@ -1,10 +1,11 @@
+import { ArrowLeft, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AnalyzeButton } from "@/components/AnalyzeButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { MomentsAndTranscript } from "@/components/MomentsAndTranscript";
 import { LowEvidenceNotice, ScoreValue, SentimentBadge, StatusPill } from "@/components/sentiment";
-import { Card, Notice, PageHeader, linkClass } from "@/components/ui";
+import { Card, EmptyState, Notice, PageHeader, linkClass } from "@/components/ui";
 import { getCallDetail } from "@/lib/queries";
 import { canAnalyze, canRetry, formatDate, formatDuration, isInProgress, isLowEvidence } from "@/lib/sentiment";
 import { getDb } from "@/lib/supabase/server";
@@ -22,6 +23,12 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
     <>
       <AutoRefresh active={isInProgress(call.status)} />
       <PageHeader
+        eyebrow={
+          <Link href="/calls" className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-100">
+            <ArrowLeft className="h-3 w-3" aria-hidden />
+            Calls
+          </Link>
+        }
         title={call.title || "Untitled call"}
         subtitle={
           <>
@@ -50,15 +57,13 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
       ) : null}
 
       {!analysis ? (
-        <Card>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            {isInProgress(call.status)
-              ? "Analysis is running. This page refreshes automatically."
-              : call.requiresManual
-                ? `This call needs manual analysis${call.manualReason ? ` (${call.manualReason})` : ""}. Use Analyze to run it.`
-                : "This call has not been analysed yet."}
-          </p>
-        </Card>
+        <EmptyState title={isInProgress(call.status) ? "Analysis is running" : "Not analysed yet"} icon={Sparkles}>
+          {isInProgress(call.status)
+            ? "This page refreshes automatically."
+            : call.requiresManual
+              ? `This call needs manual analysis${call.manualReason ? ` (${call.manualReason})` : ""}. Use Analyze to run it.`
+              : "Use Analyze to run it."}
+        </EmptyState>
       ) : (
         <div className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-3">

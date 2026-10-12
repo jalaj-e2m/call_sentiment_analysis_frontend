@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 import { fixtureData } from "./fixtures";
 import type { CallRow, Segment } from "./model";
 import {
+  canAnalyze,
+  canRetry,
   clientSummaries,
   dashboardKpis,
+  describeSyncResult,
   findSegmentForMoment,
+  formatRelative,
   formatTimestamp,
   isLowEvidence,
   labelStyle,
   needsAttention,
   negativeTopicCounts,
   rollingScore,
+  runWithConcurrency,
   scoreTrend,
 } from "./sentiment";
 
@@ -158,5 +163,68 @@ describe("dashboard aggregations on fixtures", () => {
     );
     expect(summaries[0]).toMatchObject({ calls: 6, analysed: 5, latestLabel: "unhappy" });
     expect(negativeTopicCounts(calls)[0]).toEqual({ topic: "delivery delays", count: 2 });
+  });
+});
+
+describe("analyze and retry buttons", () => {
+  it("offers Analyze for any unanalysed call, manual-only or not", () => {
+    expect(canAnalyze(call(1, null, { requiresManual: true, status: "not_started" }))).toBe(true);
+    expect(canAnalyze(call(1, null, { status: "not_started" }))).toBe(true);
+  });
+
+  it("hides Analyze while running, after failure, or once analysed", () => {
+    expect(canAnalyze(call(1, null, { status: "running" }))).toBe(false);
+    expect(canAnalyze(call(1, null, { status: "queued" }))).toBe(false);
+    expect(canAnalyze(call(1, 7))).toBe(false);
+    const failed = call(1, null, { status: "failed" });
+    expect(canAnalyze(failed)).toBe(false);
+    expect(canRetry(failed)).toBe(true);
+  });
+});
+
+describe("Fathom sync helpers", () => {
+  it("formats times relative to now", () => {
+    const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
+    expect(formatRelative(null, NOW)).toBe("never");
+    expect(formatRelative("not a date", NOW)).toBe("never");
+    expect(formatRelative(ago(20_000), NOW)).toBe("just now");
+    expect(formatRelative(ago(5 * 60_000), NOW)).toBe("5 min ago");
+    expect(formatRelative(ago(3 * 3_600_000), NOW)).toBe("3 h ago");
+    expect(formatRelative(ago(2 * 86_400_000), NOW)).toBe("2 d ago");
+    expect(formatRelative(ago(30 * 86_400_000), NOW)).toBe("31 May 2026");
+  });
+
+  it("describes a sync result with counts only", () => {
+    expect(describeSyncResult(null)).toBe("No sync yet.");
+    expect(describeSyncResult({ new_calls: 0 })).toBe("No new client calls");
+    expect(
+      describeSyncResult({
+        new_calls: 2,
+        manual_only: 1,
+        skipped: 3,
+        importedElsewhere: 1,
+        rejected: { internal_no_external_attendees: 2, too_short: 1 },
+        failed: 1,
+      }),
+    ).toBe("2 new client calls (1 manual-only) · 4 already imported · 3 non-client meetings skipped · 1 failed");
+    expect(describeSyncResult({ new_calls: 1, rejected: { internal_no_external_attendees: 1 } })).toBe(
+      "1 new client call · 1 non-client meeting skipped",
+    );
+  });
+
+  it("runs work with bounded concurrency and finishes every item", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const seen: number[] = [];
+    await runWithConcurrency([1, 2, 3, 4, 5], 2, async (n) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      seen.push(n);
+      inFlight--;
+    });
+    expect(peak).toBe(2);
+    expect(seen.sort()).toEqual([1, 2, 3, 4, 5]);
+    await expect(runWithConcurrency([], 2, async () => {})).resolves.toBeUndefined();
   });
 });

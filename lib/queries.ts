@@ -2,7 +2,7 @@
  * All data access. Every function takes the server client from getDb(), or null for fixtures,
  * and returns the app's own types (lib/model.ts). Reads go through RLS as the signed-in user.
  */
-import { FIXTURE_CLIENTS, FIXTURE_SETTINGS, fixtureData } from "./fixtures";
+import { FIXTURE_CLIENTS, FIXTURE_FATHOM_ACCOUNT, FIXTURE_SETTINGS, fixtureData } from "./fixtures";
 import type {
   AnalysisDetail,
   AnalysisStats,
@@ -10,9 +10,11 @@ import type {
   CallRow,
   ClientRow,
   DroppedCounts,
+  FathomAccount,
   Moment,
   Segment,
   SettingsData,
+  SyncResult,
 } from "./model";
 import type { AnalysisStatus, Polarity, SentimentLabel } from "./database.types";
 import type { Db } from "./supabase/server";
@@ -91,6 +93,26 @@ export async function getCallRows(db: Db | null): Promise<CallRow[]> {
     .order("started_at", { ascending: false, nullsFirst: false })
     .limit(MAX_CALLS);
   return check(result as unknown as { data: RawCall[] | null; error: { message: string } | null }, "calls").map(toCallRow);
+}
+
+/** The signed-in user's Fathom account (RLS lets owners read their own row), or null if never connected. */
+export async function getFathomAccount(db: Db | null, userId: string): Promise<FathomAccount | null> {
+  if (!db) return FIXTURE_FATHOM_ACCOUNT;
+  const result = await db
+    .from("fathom_accounts")
+    .select("vault_secret_id, key_last4, sync_status, last_sync_at, last_sync_error, last_sync_result")
+    .eq("owner_id", userId)
+    .maybeSingle();
+  const row = check(result, "your Fathom account");
+  if (!row) return null;
+  return {
+    connected: row.vault_secret_id !== null,
+    keyLast4: row.key_last4,
+    syncStatus: row.sync_status,
+    lastSyncAt: row.last_sync_at,
+    lastSyncError: row.last_sync_error,
+    lastSyncResult: asObject<SyncResult>(row.last_sync_result),
+  };
 }
 
 export async function getClients(db: Db | null): Promise<ClientRow[]> {
