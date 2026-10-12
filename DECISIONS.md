@@ -8,7 +8,7 @@ One line per choice made while building without questions.
 - Embedded Supabase selects are cast to small raw interfaces in `lib/queries.ts` instead of relying on generated relationship types.
 - `cacheComponents` and `partialPrefetching` from the Next 16 scaffold are off. Pages use classic dynamic rendering with `loading.tsx` skeletons.
 - `getDb()` calls `connection()` so every data page renders per request, including in fixture mode where no cookies are read.
-- Fixture mode turns on when `NEXT_PUBLIC_USE_FIXTURES=true` or either Supabase variable is missing. It skips auth, acts as an admin and shows a banner.
+- Fixture mode needs `NEXT_PUBLIC_USE_FIXTURES=true` and both Supabase variables empty (changed in the UI/UX redesign). It skips auth, acts as an admin and shows a banner. Missing env without the flag shows a setup message.
 - The proxy (Next 16's name for middleware) only refreshes the session and redirects signed-out users. Role and active checks happen in the `(app)` layout, which renders "No access".
 - "Last 30 days" KPIs and moment counts use the call's `started_at`, not the analysis `created_at`.
 - The average score and the rolling score skip analyses with a null score, which is how low-evidence analyses will be stored after Milestone C.
@@ -41,3 +41,19 @@ One line per choice made while building without questions.
 - The call page has a collapsible "People in this meeting" list (closed by default): name and email of every Fathom calendar invitee across the call's recordings, plus the recorder, one row per email. Staff can already read `recordings` through RLS, so no migration was needed.
 - Showing attendee emails to staff was requested explicitly; it supersedes the earlier "no emails in the UI" note for this list only. Transcript speaker emails are still not selected. Emails never go into logs or tests (tests use invented addresses).
 - Client vs E2M comes from the `e2m_domains` setting, not Fathom's `is_external`. "Spoke" means the name appears as a transcript speaker; invitees are from the calendar, so someone listed may not have joined.
+
+## UI/UX redesign
+
+- Fixture data shows only when `NEXT_PUBLIC_USE_FIXTURES=true` and both Supabase variables are empty; with neither set, pages show a "Supabase is not configured" message.
+- Date range lives in `?range=` (7/30/90/all, default 30 and omitted from the URL); dashboard, clients and client detail use it, and nav links keep it.
+- Client rolling score = newest 3 scored calls of any date; coverage, sparkline and negative moments use the selected period.
+- "Provisional" = fewer than 3 analysed calls for the client.
+- Clients sort by attention: latest call unhappy +4, rolling score <=4 +3 or <=6 +1, +0.5 per negative moment (max 6), quiet >21 days +1.
+- Needs attention = unhappy calls or a negative moment of intensity 3 in the period; the Watchlist (lowest 5, intensity >=2 negatives, quiet clients) shows only when that list is empty.
+- Heatmap columns are whole ISO weeks (Monday, UTC) overlapping the period, capped at 26.
+- Score timeline shows the 5 lowest-average clients by default; client colours avoid red, amber and green so they never read as sentiment.
+- Bulk "Analyze selected" skips manual-only calls and reuses the per-call analyze path at concurrency 2.
+- Manual reason labels ("Leader attended") are computed on the server so attendee emails never reach the client.
+- Calls filters and sorting are client-side state seeded from URL params (`client`, `label`, `status`, `manual=1`); 25 rows per page.
+- Radix Popover and Tooltip are used directly instead of a full shadcn/ui setup.
+- Layout: content max-w-[1400px]; full sidebar from `lg`, icon rail on `md`, drawer below `md`.

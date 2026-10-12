@@ -1,76 +1,125 @@
-import { Building } from "lucide-react";
+import { Building, Clock, TrendingDown, TriangleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SentimentBadge } from "@/components/sentiment";
-import { Card, EmptyState, PageHeader, TableWrap, linkClass, rowClass, td, th } from "@/components/ui";
+import { RangeControl } from "@/components/controls";
+import { RowLink } from "@/components/RowLink";
+import { ScoreChip } from "@/components/sentiment";
+import { Card, EmptyState, PageHeader, TableWrap, rowClass, td, th } from "@/components/ui";
+import { CoverageBar, Sparkline } from "@/components/viz";
+import {
+  PROVISIONAL_BELOW,
+  QUIET_DAYS,
+  ROLLING_WINDOW,
+  clientOverview,
+  parseRange,
+  periodFor,
+  periodPhrase,
+  periodWeeks,
+  rangeHref,
+  type ClientOverview,
+} from "@/lib/analytics";
 import { getCallRows, getClients } from "@/lib/queries";
-import { RECENT_DAYS, ROLLING_WINDOW, clientSummaries } from "@/lib/sentiment";
 import { getDb } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Clients" };
 
-const ARROWS = { up: "↑", down: "↓", flat: "→" } as const;
-const ARROW_CLASS = {
-  up: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
-  down: "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300",
-  flat: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
-} as const;
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-export default async function ClientsPage() {
+/** Why a client is near the top, in words (never colour alone). */
+function attentionNotes(r: ClientOverview): { text: string; tone: "alert" | "warning"; icon: typeof TriangleAlert }[] {
+  const notes: { text: string; tone: "alert" | "warning"; icon: typeof TriangleAlert }[] = [];
+  if (r.latestLabel === "unhappy") notes.push({ text: "Latest call unhappy", tone: "alert", icon: TriangleAlert });
+  else if (r.rollingScore !== null && r.rollingScore <= 4) notes.push({ text: "Low score", tone: "alert", icon: TrendingDown });
+  if (r.daysSinceLastCall === null || r.daysSinceLastCall > QUIET_DAYS) notes.push({ text: "Quiet", tone: "warning", icon: Clock });
+  return notes;
+}
+
+export default async function ClientsPage({ searchParams }: { searchParams: SearchParams }) {
+  const range = parseRange((await searchParams).range);
   const db = await getDb();
   const [clients, calls] = await Promise.all([getClients(db), getCallRows(db)]);
-  const rows = clientSummaries(clients, calls, new Date());
+  const now = new Date();
+  const p = periodFor(range, now);
+  const rows = clientOverview(clients, calls, p, periodWeeks(p, calls), now);
 
   return (
     <>
-      <PageHeader title="Clients" subtitle={`Rolling score is the average of the last ${ROLLING_WINDOW} analysed calls`} />
+      <PageHeader
+        title="Clients"
+        subtitle={`Most attention needed first. Score = average of the last ${ROLLING_WINDOW} scored calls; coverage, trend and moments cover ${periodPhrase(range)}.`}
+        actions={<RangeControl range={range} path="/clients" />}
+      />
       {rows.length === 0 ? (
         <EmptyState title="No clients yet." icon={Building} />
       ) : (
         <Card flush>
-          <TableWrap>
+          <TableWrap minWidth={820}>
             <thead>
               <tr>
-                <th className={th}>Client</th>
-                <th className={`${th} text-right`}>Calls</th>
-                <th className={`${th} text-right`}>Analysed</th>
-                <th className={th}>Latest</th>
-                <th className={`${th} text-right`}>Rolling score</th>
-                <th className={th}>Trend</th>
-                <th className={`${th} text-right`}>Negative moments ({RECENT_DAYS} d)</th>
+                <th className={th} scope="col">
+                  Client
+                </th>
+                <th className={th} scope="col">
+                  Score
+                </th>
+                <th className={th} scope="col">
+                  Coverage
+                </th>
+                <th className={th} scope="col">
+                  Weekly trend
+                </th>
+                <th className={`${th} text-right`} scope="col">
+                  Last call
+                </th>
+                <th className={`${th} text-right`} scope="col">
+                  Negative moments
+                </th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.client.id} className={rowClass}>
-                  <td className={td}>
-                    <Link href={`/clients/${r.client.id}`} className={linkClass}>
-                      {r.client.name}
-                    </Link>
-                  </td>
-                  <td className={`${td} text-right tabular-nums`}>{r.calls}</td>
-                  <td className={`${td} text-right tabular-nums text-zinc-500`}>{r.analysed}</td>
-                  <td className={td}>{r.analysed ? <SentimentBadge label={r.latestLabel} /> : <span className="text-zinc-400">–</span>}</td>
-                  <td className={`${td} text-right font-medium tabular-nums`}>
-                    {r.rollingScore === null ? "–" : r.rollingScore.toFixed(1)}
-                  </td>
-                  <td className={td}>
-                    {r.trend ? (
-                      <span
-                        className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-sm font-semibold ${ARROW_CLASS[r.trend]}`}
-                        aria-label={`Trend ${r.trend}`}
-                      >
-                        {ARROWS[r.trend]}
-                      </span>
-                    ) : (
-                      <span className="text-zinc-400">–</span>
-                    )}
-                  </td>
-                  <td className={`${td} text-right tabular-nums`}>{r.negativeMomentsRecent}</td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const notes = attentionNotes(r);
+                const href = rangeHref(`/clients/${r.client.id}`, range);
+                return (
+                  <RowLink key={r.client.id} href={href} className={rowClass}>
+                    <td className={td}>
+                      <Link href={href} className="font-medium text-zinc-900 hover:underline dark:text-zinc-100">
+                        {r.client.name}
+                      </Link>
+                      {notes.length ? (
+                        <span className="mt-0.5 flex flex-wrap gap-x-3 text-xs">
+                          {notes.map(({ text, tone, icon: Icon }) => (
+                            <span key={text} className={`inline-flex items-center gap-1 ${tone === "alert" ? "text-sent-unhappy-fg" : "text-sent-neutral-fg"}`}>
+                              <Icon className="h-3 w-3" aria-hidden />
+                              {text}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className={td}>
+                      <ScoreChip score={r.rollingScore} decimals={1} provisional={r.rollingScore !== null && r.provisional} />
+                    </td>
+                    <td className={td}>
+                      <CoverageBar coverage={r.coverage} compact />
+                    </td>
+                    <td className={td}>
+                      <Sparkline cells={r.weekly} />
+                    </td>
+                    <td className={`${td} whitespace-nowrap text-right tabular-nums text-zinc-600 dark:text-zinc-400`}>
+                      {r.daysSinceLastCall === null ? "Never" : r.daysSinceLastCall === 0 ? "Today" : `${r.daysSinceLastCall} d ago`}
+                    </td>
+                    <td className={`${td} text-right tabular-nums`}>
+                      <span className={r.negativeMoments ? "font-medium text-sent-unhappy-fg" : "text-zinc-500"}>{r.negativeMoments}</span>
+                    </td>
+                  </RowLink>
+                );
+              })}
             </tbody>
           </TableWrap>
+          <p className="border-t border-zinc-100 px-4 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+            PROV marks a score from fewer than {PROVISIONAL_BELOW} analysed calls. Quiet means no call in {QUIET_DAYS} days.
+          </p>
         </Card>
       )}
     </>

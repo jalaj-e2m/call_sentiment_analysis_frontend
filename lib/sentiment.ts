@@ -1,11 +1,9 @@
-/** Pure presentation and aggregation logic. No I/O; every function is unit-tested. */
-import type { AnalysisDetail, CallRow, ClientRow, Person, Polarity, Segment, SentimentLabel, SyncResult } from "./model";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-export const RECENT_DAYS = 30;
-export const ROLLING_WINDOW = 3;
+/** Pure presentation logic. No I/O; every function is unit-tested. Period analytics live in analytics.ts. */
+import type { AnalysisDetail, CallRow, Person, Polarity, Segment, SentimentLabel, SyncResult } from "./model";
 
 // Sentiment colours ---------------------------------------------------------------------------
+// Colours come from the CSS variables in app/globals.css (--sent-*, --pol-*), light and dark.
+// Strong colour is reserved for unhappy/neutral; happy is deliberately calm.
 
 export interface BadgeStyle {
   text: string;
@@ -13,18 +11,9 @@ export interface BadgeStyle {
 }
 
 const LABEL_STYLES: Record<SentimentLabel, BadgeStyle> = {
-  happy: {
-    text: "Happy",
-    className: "bg-emerald-100 text-emerald-800 ring-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-300",
-  },
-  neutral: {
-    text: "Neutral",
-    className: "bg-amber-100 text-amber-800 ring-amber-600/20 dark:bg-amber-500/15 dark:text-amber-300",
-  },
-  unhappy: {
-    text: "Unhappy",
-    className: "bg-red-100 text-red-800 ring-red-600/20 dark:bg-red-500/15 dark:text-red-300",
-  },
+  happy: { text: "Happy", className: "bg-sent-happy-soft text-sent-happy-fg ring-sent-happy-line" },
+  neutral: { text: "Neutral", className: "bg-sent-neutral-soft text-sent-neutral-fg ring-sent-neutral-line" },
+  unhappy: { text: "Unhappy", className: "bg-sent-unhappy-soft text-sent-unhappy-fg ring-sent-unhappy-line" },
 };
 
 const NO_LABEL: BadgeStyle = {
@@ -36,15 +25,24 @@ export function labelStyle(label: SentimentLabel | null | undefined): BadgeStyle
   return label ? LABEL_STYLES[label] : NO_LABEL;
 }
 
-/** Line colour for charts, matching the badge colours. */
-export const LABEL_HEX: Record<SentimentLabel, string> = { happy: "#059669", neutral: "#d97706", unhappy: "#dc2626" };
+/** CSS colour for charts and markers. */
+export const LABEL_COLOR: Record<SentimentLabel, string> = {
+  happy: "var(--sent-happy)",
+  neutral: "var(--sent-neutral)",
+  unhappy: "var(--sent-unhappy)",
+};
+export const POLARITY_COLOR: Record<Polarity, string> = {
+  negative: "var(--pol-negative)",
+  positive: "var(--pol-positive)",
+  neutral: "var(--pol-neutral)",
+};
 
 export function polarityClass(polarity: Polarity): string {
   switch (polarity) {
     case "negative":
-      return "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-300";
+      return "bg-sent-unhappy-soft text-sent-unhappy-fg ring-sent-unhappy-line";
     case "positive":
-      return "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300";
+      return "bg-sent-happy-soft text-sent-happy-fg ring-sent-happy-line";
     default:
       return "bg-zinc-100 text-zinc-700 ring-zinc-500/20 dark:bg-zinc-500/10 dark:text-zinc-300";
   }
@@ -108,125 +106,16 @@ export function findSegmentForMoment(segments: Segment[], timestampSeconds: numb
   return best?.i ?? null;
 }
 
-// Aggregations --------------------------------------------------------------------------------
-
-const time = (iso: string | null) => (iso ? new Date(iso).getTime() : 0);
-const byNewest = (a: CallRow, b: CallRow) => time(b.startedAt) - time(a.startedAt);
-const average = (values: number[]) => (values.length ? values.reduce((s, v) => s + v, 0) / values.length : null);
-
-export const isRecent = (iso: string | null, now: Date, days = RECENT_DAYS) =>
-  !!iso && now.getTime() - time(iso) <= days * DAY_MS && time(iso) <= now.getTime();
-
-export const scoredCalls = (calls: CallRow[]) =>
-  calls.filter((c) => c.analysis && c.analysis.score !== null).sort(byNewest);
-
-/** Average score of the newest `window` analysed calls (by call date). */
-export function rollingScore(calls: CallRow[], window = ROLLING_WINDOW): number | null {
-  return average(scoredCalls(calls).slice(0, window).map((c) => c.analysis!.score!));
-}
-
-/** Compares the newest `window` scores with the `window` before them. */
-export function scoreTrend(calls: CallRow[], window = ROLLING_WINDOW): "up" | "down" | "flat" | null {
-  const scores = scoredCalls(calls).map((c) => c.analysis!.score!);
-  if (scores.length < window + 1) return null;
-  const latest = average(scores.slice(0, window))!;
-  const previous = average(scores.slice(window, window * 2))!;
-  if (latest - previous >= 0.5) return "up";
-  if (previous - latest >= 0.5) return "down";
-  return "flat";
-}
-
-export const hasStrongNegative = (call: CallRow) =>
-  !!call.analysis?.moments.some((m) => m.polarity === "negative" && m.intensity >= 3);
-
-export function needsAttention(calls: CallRow[]): CallRow[] {
-  return calls.filter((c) => c.analysis && (c.analysis.label === "unhappy" || hasStrongNegative(c))).sort(byNewest);
-}
-
-export interface Kpis {
-  analysedRecent: number;
-  unhappyRecent: number;
-  averageScoreRecent: number | null;
-  awaitingManual: number;
-}
-
-export function dashboardKpis(calls: CallRow[], now: Date): Kpis {
-  const recent = calls.filter((c) => c.analysis && isRecent(c.startedAt, now));
-  return {
-    analysedRecent: recent.length,
-    unhappyRecent: recent.filter((c) => c.analysis!.label === "unhappy").length,
-    averageScoreRecent: average(recent.filter((c) => c.analysis!.score !== null).map((c) => c.analysis!.score!)),
-    awaitingManual: calls.filter((c) => c.requiresManual && !c.analysis).length,
-  };
-}
-
-export const recentAnalysed = (calls: CallRow[], limit = 10) => calls.filter((c) => c.analysis).sort(byNewest).slice(0, limit);
-
-export interface TrendPoint {
-  date: string;
-  [clientId: string]: number | string | null;
-}
-
-/** One row per call date (oldest first), with each client's score on that date. */
-export function trendSeries(calls: CallRow[]): TrendPoint[] {
-  const rows = new Map<string, TrendPoint>();
-  for (const c of [...scoredCalls(calls)].reverse()) {
-    if (!c.startedAt || !c.clientId) continue;
-    const date = c.startedAt.slice(0, 10);
-    const row = rows.get(date) ?? { date };
-    row[c.clientId] = c.analysis!.score;
-    rows.set(date, row);
-  }
-  return [...rows.values()];
-}
-
-export interface ClientSummary {
-  client: ClientRow;
-  calls: number;
-  analysed: number;
-  latestLabel: SentimentLabel | null;
-  rollingScore: number | null;
-  trend: "up" | "down" | "flat" | null;
-  negativeMomentsRecent: number;
-}
-
-export function clientSummaries(clients: ClientRow[], calls: CallRow[], now: Date): ClientSummary[] {
-  return clients
-    .map((client) => {
-      const own = calls.filter((c) => c.clientId === client.id);
-      const analysed = own.filter((c) => c.analysis).sort(byNewest);
-      return {
-        client,
-        calls: own.length,
-        analysed: analysed.length,
-        latestLabel: analysed[0]?.analysis?.label ?? null,
-        rollingScore: rollingScore(own),
-        trend: scoreTrend(own),
-        negativeMomentsRecent: own
-          .filter((c) => isRecent(c.startedAt, now))
-          .reduce((n, c) => n + (c.analysis?.moments.filter((m) => m.polarity === "negative").length ?? 0), 0),
-      };
-    })
-    .sort((a, b) => b.calls - a.calls || a.client.name.localeCompare(b.client.name));
-}
-
-/** Negative-moment topics with counts, most frequent first. */
-export function negativeTopicCounts(calls: CallRow[]): { topic: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const c of calls) {
-    for (const m of c.analysis?.moments ?? []) {
-      if (m.polarity !== "negative") continue;
-      const topic = m.topic.trim().toLowerCase();
-      if (topic) counts.set(topic, (counts.get(topic) ?? 0) + 1);
-    }
-  }
-  return [...counts].map(([topic, count]) => ({ topic, count })).sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
-}
+// Analyze and retry ---------------------------------------------------------------------------
 
 export const isInProgress = (status: CallRow["status"]) => status === "running" || status === "queued";
 /** Any call without an analysis can be analysed by hand (manual-only calls, and auto calls left over after a sync). */
 export const canAnalyze = (call: CallRow) => !call.analysis && !isInProgress(call.status) && call.status !== "failed";
 export const canRetry = (call: CallRow) => call.status === "failed";
+/** Bulk "Analyze selected" skips manual-only calls: those need a deliberate, one-by-one decision. */
+export const canBulkAnalyze = (call: CallRow) => !call.requiresManual && (canAnalyze(call) || canRetry(call));
+/** Analyses run from the browser at most this many at a time (after a sync and for bulk Analyze). */
+export const ANALYSIS_CONCURRENCY = 2;
 
 // Meeting people ------------------------------------------------------------------------------
 

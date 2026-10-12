@@ -14,6 +14,7 @@ export interface MomentLite {
   polarity: Polarity;
   intensity: number;
   topic: string;
+  emotion: string;
 }
 
 export interface AnalysisLite {
@@ -34,6 +35,8 @@ export interface CallRow {
   clientName: string;
   requiresManual: boolean;
   manualReason: string | null;
+  /** Readable manual reason, e.g. "Manali attended"; derived on the server so attendee emails stay there. */
+  manualLabel: string | null;
   status: AnalysisStatus;
   error: string | null;
   analysis: AnalysisLite | null;

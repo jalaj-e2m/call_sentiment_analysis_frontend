@@ -1,88 +1,160 @@
-import { ArrowLeft, Inbox } from "lucide-react";
+import { Activity, Clock, Gauge, Inbox, TrendingDown } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { TrendChart } from "@/components/TrendChart";
-import { SentimentBadge, StatusPill } from "@/components/sentiment";
-import { Card, EmptyState, PageHeader } from "@/components/ui";
+import { RangeControl } from "@/components/controls";
+import { ScoreTimeline } from "@/components/ScoreTimeline";
+import { EmotionChip, MomentDots, ScoreChip, SentimentBadge, StatusPill } from "@/components/sentiment";
+import { Card, EmptyState, KpiCard, PageHeader } from "@/components/ui";
+import { BarList, CoverageBar, EmotionMixBars } from "@/components/viz";
+import {
+  PROVISIONAL_BELOW,
+  callsInPeriod,
+  clientOverview,
+  emotionCounts,
+  momentCounts,
+  negativeTopics,
+  parseRange,
+  periodFor,
+  periodPhrase,
+  periodWeeks,
+  scoreTimeline,
+  stripClientName,
+} from "@/lib/analytics";
 import { getCallRows, getClient } from "@/lib/queries";
-import { formatDate, negativeTopicCounts, rollingScore, trendSeries } from "@/lib/sentiment";
+import { formatDate, formatDuration } from "@/lib/sentiment";
 import { getDb } from "@/lib/supabase/server";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function ClientDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
+  const [{ id }, query] = await Promise.all([params, searchParams]);
   if (!UUID_RE.test(id)) notFound();
+  const range = parseRange(query.range);
   const db = await getDb();
   const [client, allCalls] = await Promise.all([getClient(db, id), getCallRows(db)]);
   if (!client) notFound();
+
+  const now = new Date();
+  const p = periodFor(range, now);
   const calls = allCalls.filter((c) => c.clientId === id);
-  const topics = negativeTopicCounts(calls).slice(0, 10);
-  const maxTopic = Math.max(1, ...topics.map((t) => t.count));
-  const rolling = rollingScore(calls);
+  const current = callsInPeriod(calls, p);
+  const overview = clientOverview([client], calls, p, periodWeeks(p, calls), now)[0]!;
+  const timeline = scoreTimeline(calls, p);
+  const domainStart = p.start ?? Math.min(...timeline.flatMap((s) => s.points.map((pt) => pt.t)), p.end - 7 * 86_400_000);
+  const topics = negativeTopics(current, 10);
+  const emotions = emotionCounts(current);
+  const counts = momentCounts(current.flatMap((c) => c.analysis?.moments ?? []));
+  const phrase = periodPhrase(range);
 
   return (
     <>
       <PageHeader
-        eyebrow={
-          <Link href="/clients" className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-100">
-            <ArrowLeft className="h-3 w-3" aria-hidden />
-            Clients
-          </Link>
-        }
+        breadcrumbs={[{ label: "Clients", href: range === "30" ? "/clients" : `/clients?range=${range}` }, { label: client.name }]}
         title={client.name}
-        subtitle={`${calls.length} calls · rolling score ${rolling === null ? "–" : rolling.toFixed(1)}`}
+        subtitle={`${calls.length} calls in total · ${current.length} in ${phrase}`}
+        actions={<RangeControl range={range} path={`/clients/${id}`} />}
       />
       {calls.length === 0 ? (
         <EmptyState title="No calls for this client yet." icon={Inbox} />
       ) : (
         <div className="space-y-6">
-          <Card title="Score trend" description="Score per analysed call, out of 10">
-            <TrendChart data={trendSeries(calls)} series={[{ id: client.id, name: client.name }]} />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiCard
+              label="Score (last 3 scored calls)"
+              value={overview.rollingScore === null ? "–" : overview.rollingScore.toFixed(1)}
+              icon={Gauge}
+              tone={overview.rollingScore === null ? "default" : overview.rollingScore <= 4 ? "alert" : overview.rollingScore <= 6 ? "warning" : "default"}
+            >
+              {overview.rollingScore !== null && overview.provisional
+                ? `Provisional: fewer than ${PROVISIONAL_BELOW} analysed calls`
+                : `${overview.scoredCount} scored calls in total`}
+            </KpiCard>
+            <KpiCard label="Coverage" value={`${overview.coverage.analysed}/${overview.coverage.total}`} icon={Activity}>
+              <CoverageBar coverage={overview.coverage} />
+            </KpiCard>
+            <KpiCard
+              label="Negative moments"
+              value={overview.negativeMoments}
+              icon={TrendingDown}
+              tone={overview.negativeMoments > 0 && overview.latestLabel === "unhappy" ? "alert" : "default"}
+            >
+              {counts.positive} positive in {phrase}
+            </KpiCard>
+            <KpiCard
+              label="Last call"
+              value={overview.daysSinceLastCall === null ? "–" : overview.daysSinceLastCall === 0 ? "Today" : `${overview.daysSinceLastCall} d`}
+              icon={Clock}
+              tone={overview.daysSinceLastCall !== null && overview.daysSinceLastCall > 21 ? "warning" : "default"}
+            >
+              {overview.latestLabel ? <SentimentBadge label={overview.latestLabel} /> : "Not analysed yet"}
+            </KpiCard>
+          </div>
+
+          <Card title="Score timeline" description="Each dot is an analysed call. Shaded bands: 1-4 unhappy, 5-6 neutral, 7-10 happy.">
+            <ScoreTimeline series={timeline} domain={[domainStart, p.end]} height={220} />
           </Card>
-          <div className="grid gap-6 lg:grid-cols-3">
-            <Card title="Most frequent negative topics">
-              {topics.length === 0 ? (
-                <EmptyState title="No negative moments." />
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card title="Emotion mix" description={`Client moments in ${phrase}`}>
+              {emotions.length === 0 ? (
+                <EmptyState title="No moments in this period." />
               ) : (
-                <ul className="space-y-3 text-sm">
-                  {topics.map((t) => (
-                    <li key={t.topic}>
-                      <div className="flex justify-between gap-3">
-                        <span className="capitalize">{t.topic}</span>
-                        <span className="tabular-nums text-zinc-500">{t.count}</span>
-                      </div>
-                      <div className="mt-1 h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800">
-                        <div className="h-1.5 rounded-full bg-red-400/80" style={{ width: `${(t.count / maxTopic) * 100}%` }} />
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-4">
+                  <EmotionMixBars label="Negative and positive moments" rows={[{ key: "all", label: "All moments", ...counts }]} />
+                  <ul className="flex flex-wrap gap-2" aria-label="Moments by emotion">
+                    {emotions.map((e) => (
+                      <li key={e.emotion} className="inline-flex items-center gap-1">
+                        <EmotionChip emotion={e.emotion} polarity={e.polarity} />
+                        <span className="text-xs tabular-nums text-zinc-600 dark:text-zinc-400">×{e.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </Card>
-            <Card title="Timeline" className="lg:col-span-2" flush>
+            <Card title="Top negative topics" description={`Negative moments in ${phrase}, by topic`}>
+              {topics.length === 0 ? (
+                <EmptyState title="No negative moments in this period." />
+              ) : (
+                <BarList items={topics.map((t) => ({ label: t.topic, value: t.count }))} label="Negative moments by topic" />
+              )}
+            </Card>
+          </div>
+
+          <Card title="Call timeline" description={`Calls in ${phrase}, newest first`} flush>
+            {current.length === 0 ? (
+              <div className="p-4">
+                <EmptyState title="No calls in this period." />
+              </div>
+            ) : (
               <ol className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                {calls.map((c) => (
+                {current.map((c) => (
                   <li key={c.id}>
                     <Link
                       href={`/calls/${c.id}`}
-                      className="flex items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
+                      className="grid grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-sm transition-colors hover:bg-zinc-50 sm:grid-cols-[6rem_minmax(0,1fr)_4rem_6rem_auto] dark:hover:bg-zinc-800/40"
                     >
-                      <span className="w-24 shrink-0 whitespace-nowrap text-xs text-zinc-500">{formatDate(c.startedAt)}</span>
-                      <span className="min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">
-                        {c.title || "Untitled call"}
+                      <span className="whitespace-nowrap text-xs tabular-nums text-zinc-600 dark:text-zinc-400">{formatDate(c.startedAt)}</span>
+                      <span className="min-w-0 truncate font-medium text-zinc-900 dark:text-zinc-100">{stripClientName(c.title, client.name)}</span>
+                      <span className="hidden text-xs tabular-nums text-zinc-600 sm:block dark:text-zinc-400">{formatDuration(c.durationSeconds)}</span>
+                      <span className="hidden sm:block">{c.analysis ? <MomentDots {...momentCounts(c.analysis.moments)} /> : null}</span>
+                      <span className="flex items-center justify-end gap-2">
+                        {c.analysis ? (
+                          <>
+                            <ScoreChip score={c.analysis.score} lowEvidence={c.analysis.moments.length === 0} />
+                            <SentimentBadge label={c.analysis.label} />
+                          </>
+                        ) : (
+                          <StatusPill status={c.status} />
+                        )}
                       </span>
-                      {c.analysis ? (
-                        <SentimentBadge label={c.analysis.label} score={c.analysis.score} />
-                      ) : (
-                        <StatusPill status={c.status} />
-                      )}
                     </Link>
                   </li>
                 ))}
               </ol>
-            </Card>
-          </div>
+            )}
+          </Card>
         </div>
       )}
     </>

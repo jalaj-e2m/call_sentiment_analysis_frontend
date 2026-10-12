@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { fixtureData } from "./fixtures";
 import type { CallRow, Segment } from "./model";
 import {
   canAnalyze,
+  canBulkAnalyze,
   canRetry,
-  clientSummaries,
-  dashboardKpis,
   describeSyncResult,
   findSegmentForMoment,
   formatRelative,
@@ -13,11 +11,7 @@ import {
   isLowEvidence,
   labelStyle,
   meetingPeople,
-  needsAttention,
-  negativeTopicCounts,
-  rollingScore,
   runWithConcurrency,
-  scoreTrend,
 } from "./sentiment";
 
 const NOW = new Date("2026-06-30T12:00:00Z");
@@ -33,6 +27,7 @@ function call(daysAgo: number, score: number | null, extra: Partial<CallRow> = {
     clientName: "Client One",
     requiresManual: false,
     manualReason: null,
+    manualLabel: null,
     status: "done",
     error: null,
     analysis:
@@ -51,37 +46,12 @@ function call(daysAgo: number, score: number | null, extra: Partial<CallRow> = {
 }
 
 describe("sentiment badge mapping", () => {
-  it("maps each label to its text and colour", () => {
+  it("maps each label to its text and semantic colour", () => {
     expect(labelStyle("happy")).toMatchObject({ text: "Happy" });
-    expect(labelStyle("happy").className).toContain("emerald");
-    expect(labelStyle("neutral").className).toContain("amber");
-    expect(labelStyle("unhappy").className).toContain("red");
+    expect(labelStyle("happy").className).toContain("sent-happy");
+    expect(labelStyle("neutral").className).toContain("sent-neutral");
+    expect(labelStyle("unhappy").className).toContain("sent-unhappy");
     expect(labelStyle(null).text).toBe("Not analysed");
-  });
-});
-
-describe("rolling score", () => {
-  it("averages the newest three analysed calls by call date", () => {
-    const calls = [call(1, 4), call(10, 8), call(3, 6), call(20, 10), call(2, null)];
-    expect(rollingScore(calls)).toBeCloseTo((4 + 6 + 8) / 3);
-  });
-
-  it("uses fewer calls when fewer exist, and null when none", () => {
-    expect(rollingScore([call(1, 7)])).toBe(7);
-    expect(rollingScore([call(1, null)])).toBeNull();
-  });
-
-  it("ignores analyses without a score", () => {
-    const noScore = call(1, 5);
-    noScore.analysis!.score = null;
-    expect(rollingScore([noScore, call(2, 9)])).toBe(9);
-  });
-
-  it("trend compares the newest three with the three before", () => {
-    expect(scoreTrend([call(1, 9), call(2, 9), call(3, 9), call(4, 5), call(5, 5), call(6, 5)])).toBe("up");
-    expect(scoreTrend([call(1, 3), call(2, 3), call(3, 3), call(4, 7)])).toBe("down");
-    expect(scoreTrend([call(1, 6), call(2, 6), call(3, 6), call(4, 6)])).toBe("flat");
-    expect(scoreTrend([call(1, 6), call(2, 6)])).toBeNull();
   });
 });
 
@@ -140,33 +110,6 @@ describe("moment to transcript matching", () => {
   });
 });
 
-describe("dashboard aggregations on fixtures", () => {
-  const { calls } = fixtureData(NOW.getTime());
-
-  it("computes KPIs for the last 30 days", () => {
-    const kpis = dashboardKpis(calls, NOW);
-    expect(kpis.analysedRecent).toBe(10);
-    expect(kpis.unhappyRecent).toBe(1);
-    expect(kpis.awaitingManual).toBe(3);
-    expect(kpis.averageScoreRecent).toBeCloseTo(6.5);
-  });
-
-  it("lists unhappy calls and calls with an intensity-3 negative moment", () => {
-    const attention = needsAttention(calls);
-    expect(attention.map((c) => c.title)).toEqual(["Weekly sync", "Strategy session"]);
-  });
-
-  it("summarises clients and counts negative topics", () => {
-    const summaries = clientSummaries(
-      [{ id: calls[0]!.clientId!, name: "Northwind Studio", status: "active" }],
-      calls,
-      NOW,
-    );
-    expect(summaries[0]).toMatchObject({ calls: 6, analysed: 5, latestLabel: "unhappy" });
-    expect(negativeTopicCounts(calls)[0]).toEqual({ topic: "delivery delays", count: 2 });
-  });
-});
-
 describe("analyze and retry buttons", () => {
   it("offers Analyze for any unanalysed call, manual-only or not", () => {
     expect(canAnalyze(call(1, null, { requiresManual: true, status: "not_started" }))).toBe(true);
@@ -180,6 +123,14 @@ describe("analyze and retry buttons", () => {
     const failed = call(1, null, { status: "failed" });
     expect(canAnalyze(failed)).toBe(false);
     expect(canRetry(failed)).toBe(true);
+  });
+
+  it("bulk-analyses unanalysed and failed calls, never manual-only ones", () => {
+    expect(canBulkAnalyze(call(1, null, { status: "not_started" }))).toBe(true);
+    expect(canBulkAnalyze(call(1, null, { status: "failed" }))).toBe(true);
+    expect(canBulkAnalyze(call(1, null, { status: "not_started", requiresManual: true }))).toBe(false);
+    expect(canBulkAnalyze(call(1, null, { status: "running" }))).toBe(false);
+    expect(canBulkAnalyze(call(1, 7))).toBe(false);
   });
 });
 

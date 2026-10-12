@@ -2,16 +2,67 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-@theme inline {
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
-
+/*
+ * One semantic palette. Strong colour only for unhappy and neutral; happy is calm and low-contrast.
+ * Every use pairs colour with an icon or text. Polarity colours (emotions) reuse the same hues.
+ */
 :root {
   color-scheme: light;
+  --sent-unhappy: #dc2626;
+  --sent-unhappy-fg: #991b1b;
+  --sent-unhappy-soft: #fef2f2;
+  --sent-unhappy-line: rgb(220 38 38 / 0.28);
+  --sent-neutral: #d97706;
+  --sent-neutral-fg: #92400e;
+  --sent-neutral-soft: #fffbeb;
+  --sent-neutral-line: rgb(217 119 6 / 0.3);
+  --sent-happy: #5b9a80;
+  --sent-happy-fg: #3d6656;
+  --sent-happy-soft: #f2f7f5;
+  --sent-happy-line: rgb(91 154 128 / 0.25);
+  --pol-negative: var(--sent-unhappy);
+  --pol-positive: var(--sent-happy);
+  --pol-neutral: #a1a1aa;
+  --chart-grid: #e4e4e7;
+  --chart-axis: #52525b;
 }
 
 .dark {
   color-scheme: dark;
+  --sent-unhappy: #f87171;
+  --sent-unhappy-fg: #fca5a5;
+  --sent-unhappy-soft: rgb(248 113 113 / 0.12);
+  --sent-unhappy-line: rgb(248 113 113 / 0.32);
+  --sent-neutral: #fbbf24;
+  --sent-neutral-fg: #fcd34d;
+  --sent-neutral-soft: rgb(251 191 36 / 0.1);
+  --sent-neutral-line: rgb(251 191 36 / 0.3);
+  --sent-happy: #6fae94;
+  --sent-happy-fg: #a3cbb9;
+  --sent-happy-soft: rgb(111 174 148 / 0.09);
+  --sent-happy-line: rgb(111 174 148 / 0.22);
+  --pol-neutral: #71717a;
+  --chart-grid: #27272a;
+  --chart-axis: #a1a1aa;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-sent-unhappy: var(--sent-unhappy);
+  --color-sent-unhappy-fg: var(--sent-unhappy-fg);
+  --color-sent-unhappy-soft: var(--sent-unhappy-soft);
+  --color-sent-unhappy-line: var(--sent-unhappy-line);
+  --color-sent-neutral: var(--sent-neutral);
+  --color-sent-neutral-fg: var(--sent-neutral-fg);
+  --color-sent-neutral-soft: var(--sent-neutral-soft);
+  --color-sent-neutral-line: var(--sent-neutral-line);
+  --color-sent-happy: var(--sent-happy);
+  --color-sent-happy-fg: var(--sent-happy-fg);
+  --color-sent-happy-soft: var(--sent-happy-soft);
+  --color-sent-happy-line: var(--sent-happy-line);
+  --color-pol-negative: var(--pol-negative);
+  --color-pol-positive: var(--pol-positive);
+  --color-pol-neutral: var(--pol-neutral);
 }
 
 body {
@@ -20,4 +71,24 @@ body {
 
 ::selection {
   background: rgb(99 102 241 / 0.2);
+}
+
+@keyframes flash-line {
+  from {
+    background-color: rgb(250 204 21 / 0.35);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.flash-line {
+  animation: flash-line 2.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash-line {
+    animation: none;
+    outline: 2px solid rgb(250 204 21 / 0.6);
+  }
 }

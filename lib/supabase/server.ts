@@ -3,14 +3,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import type { Database } from "../database.types";
-import { SUPABASE_ANON_KEY, SUPABASE_URL, USE_FIXTURES } from "../env";
+import { SUPABASE_ANON_KEY, SUPABASE_CONFIGURED, SUPABASE_URL } from "../env";
 
 export type Db = SupabaseClient<Database>;
 
-/** Server-side client acting as the signed-in user (RLS applies), or null in fixture mode. */
+/**
+ * Server-side client acting as the signed-in user (RLS applies), or null without Supabase env.
+ * Query helpers only turn null into fixture data when USE_FIXTURES is on.
+ */
 export async function getDb(): Promise<Db | null> {
   await connection();
-  if (USE_FIXTURES) return null;
+  if (!SUPABASE_CONFIGURED) return null;
   const cookieStore = await cookies();
   return createServerClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {

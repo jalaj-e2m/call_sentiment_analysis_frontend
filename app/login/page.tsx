@@ -2,7 +2,7 @@ import { AudioLines } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { primaryButtonClass } from "@/components/ui";
-import { USE_FIXTURES } from "@/lib/env";
+import { SUPABASE_CONFIGURED, USE_FIXTURES } from "@/lib/env";
 import { LoginForm } from "./LoginForm";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -16,7 +16,7 @@ export default function LoginPage() {
             <AudioLines className="h-5 w-5" aria-hidden />
           </span>
           <h1 className="text-xl font-semibold tracking-tight">Sign in to Call Sentiment</h1>
-          <p className="mt-1 text-sm text-zinc-500">Use the account you were invited with.</p>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Use the account you were invited with.</p>
         </div>
         <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           {USE_FIXTURES ? (
@@ -26,8 +26,12 @@ export default function LoginPage() {
                 Open the preview
               </Link>
             </div>
-          ) : (
+          ) : SUPABASE_CONFIGURED ? (
             <LoginForm />
+          ) : (
+            <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
+              Supabase is not configured. Set the variables in .env.local.
+            </p>
           )}
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { USE_FIXTURES } from "./env";
 import { FIXTURE_PROFILE } from "./fixtures";
 import type { Profile } from "./model";
 import { getDb } from "./supabase/server";
@@ -7,6 +8,7 @@ export const STAFF_ROLES = ["admin", "specialist", "associate"] as const;
 export type Viewer =
   | { kind: "anonymous" }
   | { kind: "no-access" }
+  | { kind: "unconfigured" }
   | { kind: "staff"; profile: Profile; fixtures: boolean };
 
 export const isStaff = (profile: Pick<Profile, "role" | "active"> | null): boolean =>
@@ -15,7 +17,7 @@ export const isStaff = (profile: Pick<Profile, "role" | "active"> | null): boole
 /** The signed-in user's profile. Engineers, inactive users and users without a profile get no access. */
 export async function getViewer(): Promise<Viewer> {
   const db = await getDb();
-  if (!db) return { kind: "staff", profile: FIXTURE_PROFILE, fixtures: true };
+  if (!db) return USE_FIXTURES ? { kind: "staff", profile: FIXTURE_PROFILE, fixtures: true } : { kind: "unconfigured" };
 
   const {
     data: { user },

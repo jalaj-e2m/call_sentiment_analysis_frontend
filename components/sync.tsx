@@ -7,10 +7,9 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 import { triggerAnalysis } from "@/lib/analyze";
 import { syncFathom } from "@/lib/fathom";
 import type { FathomAccount } from "@/lib/model";
-import { describeSyncResult, formatRelative, runWithConcurrency } from "@/lib/sentiment";
-import { buttonClass, primaryButtonClass } from "./ui";
+import { ANALYSIS_CONCURRENCY, describeSyncResult, formatRelative, runWithConcurrency } from "@/lib/sentiment";
+import { buttonClass, iconButtonClass, primaryButtonClass } from "./ui";
 
-const ANALYSIS_CONCURRENCY = 2;
 
 export interface SyncState {
   phase: "idle" | "syncing" | "analysing";
@@ -94,9 +93,18 @@ export function syncStatusText(state: SyncState): string | null {
   return null;
 }
 
-export function SyncButton({ size = "default", label = "Sync now" }: { size?: "default" | "block"; label?: string }) {
+export function SyncButton({ size = "default", label = "Sync now" }: { size?: "default" | "block" | "icon"; label?: string }) {
   const { account, state, sync } = useSync();
   const running = state.phase !== "idle";
+  if (size === "icon") {
+    if (!account?.connected) return null;
+    const text = syncStatusText(state) ?? label;
+    return (
+      <button type="button" onClick={sync} disabled={running} className={iconButtonClass} aria-label={text} title={text}>
+        <RefreshCw className={`h-4 w-4 ${running ? "animate-spin motion-reduce:animate-none" : ""}`} aria-hidden />
+      </button>
+    );
+  }
   return (
     <button
       type="button"
@@ -118,7 +126,7 @@ export function SyncPanel() {
     return (
       <div className="rounded-lg border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
         <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Fathom not connected</p>
-        <p className="mt-0.5 text-xs text-zinc-500">Connect your account to import your calls.</p>
+        <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">Connect your account to import your calls.</p>
         <Link href="/fathom" className={`${buttonClass} mt-2.5 w-full`}>
           <Plug className="h-3.5 w-3.5" aria-hidden />
           Connect Fathom
@@ -128,7 +136,7 @@ export function SyncPanel() {
   }
 
   const status = syncStatusText(state);
-  const tone = { info: "text-zinc-500", success: "text-emerald-700 dark:text-emerald-400", error: "text-red-700 dark:text-red-400" }[
+  const tone = { info: "text-zinc-600 dark:text-zinc-400", success: "text-sent-happy-fg", error: "text-sent-unhappy-fg" }[
     state.tone
   ];
   return (
@@ -136,18 +144,18 @@ export function SyncPanel() {
       <div className="mb-2.5 flex items-center justify-between gap-2 text-xs">
         <span className="flex items-center gap-1.5 font-medium text-zinc-700 dark:text-zinc-300">
           <span
-            className={`h-1.5 w-1.5 rounded-full ${account.syncStatus === "failed" ? "bg-red-500" : "bg-emerald-500"}`}
+            className={`h-1.5 w-1.5 rounded-full ${account.syncStatus === "failed" ? "bg-sent-unhappy" : "bg-sent-happy"}`}
             aria-hidden
           />
           Fathom
         </span>
-        <span className="text-zinc-500" suppressHydrationWarning>
+        <span className="text-zinc-600 dark:text-zinc-400" suppressHydrationWarning>
           {formatRelative(account.lastSyncAt, new Date())}
         </span>
       </div>
       <SyncButton size="block" />
       {status ? (
-        <p className="mt-2 text-xs text-zinc-500" aria-live="polite">
+        <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400" aria-live="polite">
           {status}
         </p>
       ) : state.message ? (
@@ -155,7 +163,7 @@ export function SyncPanel() {
           {state.message}
         </p>
       ) : account.syncStatus === "failed" ? (
-        <p className="mt-2 text-xs text-red-700 dark:text-red-400">Last sync failed. See Fathom page.</p>
+        <p className="mt-2 text-xs text-sent-unhappy-fg">Last sync failed. See Fathom page.</p>
       ) : null}
     </div>
   );

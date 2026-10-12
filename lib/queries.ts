@@ -2,6 +2,8 @@
  * All data access. Every function takes the server client from getDb(), or null for fixtures,
  * and returns the app's own types (lib/model.ts). Reads go through RLS as the signed-in user.
  */
+import { manualReasonLabel } from "./analytics";
+import { USE_FIXTURES } from "./env";
 import { FIXTURE_CLIENTS, FIXTURE_FATHOM_ACCOUNT, FIXTURE_SETTINGS, fixtureData } from "./fixtures";
 import type {
   AnalysisDetail,
@@ -24,8 +26,8 @@ const MAX_CALLS = 2000;
 
 const CALL_COLUMNS =
   "id, title, started_at, duration_seconds, client_id, requires_manual_analysis, manual_reason, " +
-  "analysis_status, analysis_error, master_recording_id, clients(name), " +
-  "analyses(id, sentiment_score, overall_sentiment, trigger_source, created_at, sentiment_moments(polarity, intensity, topic))";
+  "analysis_status, analysis_error, master_recording_id, attendee_emails, clients(name), " +
+  "analyses(id, sentiment_score, overall_sentiment, trigger_source, created_at, sentiment_moments(polarity, intensity, topic, emotion))";
 
 interface RawCall {
   id: string;
@@ -38,6 +40,7 @@ interface RawCall {
   analysis_status: AnalysisStatus;
   analysis_error: string | null;
   master_recording_id: string | null;
+  attendee_emails: string[] | null;
   clients: { name: string } | null;
   analyses: {
     id: string;
@@ -45,18 +48,32 @@ interface RawCall {
     overall_sentiment: SentimentLabel | null;
     trigger_source: "auto" | "manual";
     created_at: string;
-    sentiment_moments: { polarity: Polarity; intensity: number; topic: string }[];
+    sentiment_moments: { polarity: Polarity; intensity: number; topic: string; emotion: string }[];
   }[];
 }
 
 export class QueryError extends Error {}
+
+/** Fixture data only in fixture mode; without Supabase env and without the flag, fail loudly. */
+function fixture<T>(make: () => T): T {
+  if (!USE_FIXTURES) throw new QueryError("Supabase is not configured. Set the variables in .env.local.");
+  return make();
+}
 
 function check<T>(result: { data: T | null; error: { message: string } | null }, what: string): T {
   if (result.error) throw new QueryError(`Could not load ${what}: ${result.error.message}`);
   return result.data as T;
 }
 
-function toCallRow(raw: RawCall): CallRow {
+/** analysis_policy.manual_only_if_attendee_emails, used to name the attendee behind a manual-only call. */
+async function loadManualOnlyEmails(db: Db): Promise<string[]> {
+  const result = await db.from("app_settings").select("value").eq("key", "analysis_policy").maybeSingle();
+  const value = asObject<{ manual_only_if_attendee_emails?: unknown }>(check(result, "settings")?.value);
+  const emails = value?.manual_only_if_attendee_emails;
+  return Array.isArray(emails) ? emails.filter((e): e is string => typeof e === "string") : [];
+}
+
+function toCallRow(raw: RawCall, manualOnlyEmails: string[]): CallRow {
   const a = raw.analyses[0];
   return {
     id: raw.id,
@@ -67,6 +84,9 @@ function toCallRow(raw: RawCall): CallRow {
     clientName: raw.clients?.name ?? "Unknown client",
     requiresManual: raw.requires_manual_analysis,
     manualReason: raw.manual_reason,
+    manualLabel: raw.requires_manual_analysis
+      ? manualReasonLabel(raw.manual_reason, raw.attendee_emails ?? [], manualOnlyEmails)
+      : null,
     status: raw.analysis_status,
     error: raw.analysis_error,
     analysis: a
@@ -84,21 +104,26 @@ function toCallRow(raw: RawCall): CallRow {
 
 /** Client calls (not excluded) with their current analysis, newest first. */
 export async function getCallRows(db: Db | null): Promise<CallRow[]> {
-  if (!db) return fixtureData().calls;
-  const result = await db
-    .from("calls")
-    .select(CALL_COLUMNS)
-    .eq("call_type", "client")
-    .eq("excluded", false)
-    .eq("analyses.is_current", true)
-    .order("started_at", { ascending: false, nullsFirst: false })
-    .limit(MAX_CALLS);
-  return check(result as unknown as { data: RawCall[] | null; error: { message: string } | null }, "calls").map(toCallRow);
+  if (!db) return fixture(() => fixtureData().calls);
+  const [result, manualOnlyEmails] = await Promise.all([
+    db
+      .from("calls")
+      .select(CALL_COLUMNS)
+      .eq("call_type", "client")
+      .eq("excluded", false)
+      .eq("analyses.is_current", true)
+      .order("started_at", { ascending: false, nullsFirst: false })
+      .limit(MAX_CALLS),
+    loadManualOnlyEmails(db),
+  ]);
+  return check(result as unknown as { data: RawCall[] | null; error: { message: string } | null }, "calls").map((raw) =>
+    toCallRow(raw, manualOnlyEmails),
+  );
 }
 
 /** The signed-in user's Fathom account (RLS lets owners read their own row), or null if never connected. */
 export async function getFathomAccount(db: Db | null, userId: string): Promise<FathomAccount | null> {
-  if (!db) return FIXTURE_FATHOM_ACCOUNT;
+  if (!db) return fixture(() => FIXTURE_FATHOM_ACCOUNT);
   const result = await db
     .from("fathom_accounts")
     .select("vault_secret_id, key_last4, sync_status, last_sync_at, last_sync_error, last_sync_result")
@@ -117,13 +142,13 @@ export async function getFathomAccount(db: Db | null, userId: string): Promise<F
 }
 
 export async function getClients(db: Db | null): Promise<ClientRow[]> {
-  if (!db) return FIXTURE_CLIENTS;
+  if (!db) return fixture(() => FIXTURE_CLIENTS);
   const result = await db.from("clients").select("id, name, status").order("name");
   return check(result, "clients");
 }
 
 export async function getClient(db: Db | null, id: string): Promise<ClientRow | null> {
-  if (!db) return FIXTURE_CLIENTS.find((c) => c.id === id) ?? null;
+  if (!db) return fixture(() => FIXTURE_CLIENTS.find((c) => c.id === id) ?? null);
   const result = await db.from("clients").select("id, name, status").eq("id", id).maybeSingle();
   return check(result, "client");
 }
@@ -150,18 +175,15 @@ const asObject = <T>(value: unknown): T | null =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as T) : null;
 
 export async function getCallDetail(db: Db | null, id: string): Promise<CallDetail | null> {
-  if (!db) return fixtureData().details.get(id) ?? null;
+  if (!db) return fixture(() => fixtureData().details.get(id) ?? null);
 
-  const callResult = await db
-    .from("calls")
-    .select(CALL_COLUMNS)
-    .eq("id", id)
-    .eq("call_type", "client")
-    .eq("analyses.is_current", true)
-    .maybeSingle();
+  const [callResult, manualOnlyEmails] = await Promise.all([
+    db.from("calls").select(CALL_COLUMNS).eq("id", id).eq("call_type", "client").eq("analyses.is_current", true).maybeSingle(),
+    loadManualOnlyEmails(db),
+  ]);
   const raw = check(callResult as unknown as { data: RawCall | null; error: { message: string } | null }, "call");
   if (!raw) return null;
-  const call = toCallRow(raw);
+  const call = toCallRow(raw, manualOnlyEmails);
 
   let analysis: AnalysisDetail | null = null;
   if (call.analysis) {
@@ -250,7 +272,7 @@ export async function getCallDetail(db: Db | null, id: string): Promise<CallDeta
 }
 
 export async function getSettings(db: Db | null): Promise<SettingsData> {
-  if (!db) return FIXTURE_SETTINGS;
+  if (!db) return fixture(() => FIXTURE_SETTINGS);
   const [settings, prompt] = await Promise.all([
     db.from("app_settings").select("key, value").order("key"),
     db

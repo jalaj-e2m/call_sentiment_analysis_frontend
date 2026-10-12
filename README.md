@@ -14,7 +14,7 @@ Only `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` belong here.
 
 ## Fixture mode
 
-If either Supabase variable is empty, or `NEXT_PUBLIC_USE_FIXTURES=true`, the app runs on fake data in `lib/fixtures.ts` with no login. Use it for UI work and demos.
+With `NEXT_PUBLIC_USE_FIXTURES=true` and both Supabase variables empty, the app runs on fake data in `lib/fixtures.ts` with no login (8 clients, 12 weeks). Use it for UI work and demos. Fixture data is never shown while the Supabase variables are set.
 
 ## Access
 
