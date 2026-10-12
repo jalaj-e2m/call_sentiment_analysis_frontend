@@ -9,11 +9,13 @@ import type {
   ClientRow,
   FathomAccount,
   Moment,
+  Person,
   Profile,
   Segment,
   SentimentLabel,
   SettingsData,
 } from "./model";
+import { meetingPeople } from "./sentiment";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -117,6 +119,25 @@ function buildTranscript(minutes: number): Segment[] {
   });
 }
 
+function buildPeople(clientName: string, segments: Segment[]): Person[] {
+  const domain = `${clientName.toLowerCase().replace(/[^a-z]+/g, "")}.example`;
+  return meetingPeople(
+    [
+      {
+        invitees: [
+          { name: "Client Speaker", email: `client.speaker@${domain}` },
+          { name: "Client Colleague", email: `colleague@${domain}` },
+          { name: "Staff Member", email: "staff.member@e2msolutions.com" },
+        ],
+        recordedByName: "Staff Member",
+        recordedByEmail: "staff.member@e2msolutions.com",
+      },
+    ],
+    ["e2msolutions.com", "e2m.solutions"],
+    segments.map((s) => s.speakerName),
+  );
+}
+
 function build(now: number) {
   const calls: CallRow[] = [];
   const details = new Map<string, CallDetail>();
@@ -160,7 +181,8 @@ function build(now: number) {
       },
     };
     calls.push(call);
-    details.set(id, { call, analysis: detail, segments: buildTranscript(spec.minutes) });
+    const segments = buildTranscript(spec.minutes);
+    details.set(id, { call, analysis: detail, segments, people: buildPeople(spec.client.name, segments) });
   });
 
   const lowEvidence = calls[6]!;

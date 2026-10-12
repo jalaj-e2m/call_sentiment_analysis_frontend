@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AnalyzeButton } from "@/components/AnalyzeButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { MeetingPeople } from "@/components/MeetingPeople";
 import { MomentsAndTranscript } from "@/components/MomentsAndTranscript";
 import { LowEvidenceNotice, ScoreValue, SentimentBadge, StatusPill } from "@/components/sentiment";
 import { Card, EmptyState, Notice, PageHeader, linkClass } from "@/components/ui";
@@ -17,7 +18,7 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
   if (!UUID_RE.test(id)) notFound();
   const detail = await getCallDetail(await getDb(), id);
   if (!detail) notFound();
-  const { call, analysis, segments } = detail;
+  const { call, analysis, segments, people } = detail;
 
   return (
     <>
@@ -49,6 +50,8 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
           </div>
         }
       />
+
+      <MeetingPeople people={people} />
 
       {call.status === "failed" && call.error ? (
         <div className="mb-4">

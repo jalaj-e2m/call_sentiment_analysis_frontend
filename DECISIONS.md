@@ -35,3 +35,9 @@ One line per choice made while building without questions.
 - A truncated sync (more than 100 new meetings) imports the newest 100 and says so; the older ones need the backend backfill script. Clicking Sync again would not recover them because the sync point moves forward.
 - Sync results shown in the UI are counts only, never titles, names or emails.
 - UI: left sidebar (drawer on mobile), neutral zinc greys with one indigo accent, Geist Sans via the `geist` package (bundled locally, so the build still needs no network), icons from `lucide-react`. Sentiment colours are unchanged.
+
+## Meeting people on the call page
+
+- The call page has a collapsible "People in this meeting" list (closed by default): name and email of every Fathom calendar invitee across the call's recordings, plus the recorder, one row per email. Staff can already read `recordings` through RLS, so no migration was needed.
+- Showing attendee emails to staff was requested explicitly; it supersedes the earlier "no emails in the UI" note for this list only. Transcript speaker emails are still not selected. Emails never go into logs or tests (tests use invented addresses).
+- Client vs E2M comes from the `e2m_domains` setting, not Fathom's `is_external`. "Spoke" means the name appears as a transcript speaker; invitees are from the calendar, so someone listed may not have joined.

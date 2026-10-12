@@ -17,6 +17,7 @@ import type {
   SyncResult,
 } from "./model";
 import type { AnalysisStatus, Polarity, SentimentLabel } from "./database.types";
+import { meetingPeople } from "./sentiment";
 import type { Db } from "./supabase/server";
 
 const MAX_CALLS = 2000;
@@ -223,17 +224,29 @@ export async function getCallDetail(db: Db | null, id: string): Promise<CallDeta
     }
   }
 
-  let segments: Segment[] = [];
-  if (raw.master_recording_id) {
-    const transcript = await db
-      .from("recording_transcripts")
-      .select("segments")
-      .eq("recording_id", raw.master_recording_id)
-      .maybeSingle();
-    segments = toSegments(check(transcript, "transcript")?.segments);
-  }
+  const recordingFilter = raw.master_recording_id
+    ? `call_id.eq.${raw.id},id.eq.${raw.master_recording_id}`
+    : `call_id.eq.${raw.id}`;
+  const [transcript, recordings, domains] = await Promise.all([
+    raw.master_recording_id
+      ? db.from("recording_transcripts").select("segments").eq("recording_id", raw.master_recording_id).maybeSingle()
+      : null,
+    db.from("recordings").select("invitees, recorded_by_name, recorded_by_email").or(recordingFilter),
+    db.from("app_settings").select("value").eq("key", "e2m_domains").maybeSingle(),
+  ]);
+  const segments = transcript ? toSegments(check(transcript, "transcript")?.segments) : [];
+  const e2mDomains = check(domains, "settings")?.value;
+  const people = meetingPeople(
+    check(recordings, "attendees").map((r) => ({
+      invitees: r.invitees,
+      recordedByName: r.recorded_by_name,
+      recordedByEmail: r.recorded_by_email,
+    })),
+    Array.isArray(e2mDomains) ? e2mDomains.filter((d): d is string => typeof d === "string") : [],
+    segments.map((s) => s.speakerName),
+  );
 
-  return { call, analysis, segments };
+  return { call, analysis, segments, people };
 }
 
 export async function getSettings(db: Db | null): Promise<SettingsData> {

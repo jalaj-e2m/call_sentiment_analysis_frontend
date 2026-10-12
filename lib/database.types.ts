@@ -65,6 +65,13 @@ export interface Database {
         created_at: string;
       }>;
       recording_transcripts: Table<{ recording_id: string; segments: Json; full_text: string | null }>;
+      recordings: Table<{
+        id: string;
+        call_id: string | null;
+        invitees: Json;
+        recorded_by_name: string | null;
+        recorded_by_email: string | null;
+      }>;
       app_settings: Table<{ key: string; value: Json }>;
       fathom_accounts: Table<{
         id: string;

@@ -12,6 +12,7 @@ import {
   formatTimestamp,
   isLowEvidence,
   labelStyle,
+  meetingPeople,
   needsAttention,
   negativeTopicCounts,
   rollingScore,
@@ -179,6 +180,43 @@ describe("analyze and retry buttons", () => {
     const failed = call(1, null, { status: "failed" });
     expect(canAnalyze(failed)).toBe(false);
     expect(canRetry(failed)).toBe(true);
+  });
+});
+
+describe("meeting people", () => {
+  it("merges invitees across recordings, tags sides by E2M domain and lists clients first", () => {
+    const people = meetingPeople(
+      [
+        {
+          invitees: [
+            { name: "Zed Client", email: "Zed@Client.example" },
+            { name: "Amy Staff", email: "amy@e2msolutions.com", is_external: true },
+            { name: null, email: "" },
+            "not an object",
+          ],
+          recordedByName: "Amy Staff",
+          recordedByEmail: "amy@e2msolutions.com",
+        },
+        {
+          invitees: [{ name: null, email: "zed@client.example" }, { name: "Bo Client", email: "bo@client.example" }],
+          recordedByName: "Cy Staff",
+          recordedByEmail: "cy@e2m.solutions",
+        },
+        { invitees: null, recordedByName: null, recordedByEmail: null },
+      ],
+      ["e2msolutions.com", "e2m.solutions"],
+      ["Zed Client", "amy staff", null],
+    );
+    expect(people).toEqual([
+      { name: "Bo Client", email: "bo@client.example", side: "client", recorder: false, spoke: false },
+      { name: "Zed Client", email: "zed@client.example", side: "client", recorder: false, spoke: true },
+      { name: "Amy Staff", email: "amy@e2msolutions.com", side: "e2m", recorder: true, spoke: true },
+      { name: "Cy Staff", email: "cy@e2m.solutions", side: "e2m", recorder: true, spoke: false },
+    ]);
+  });
+
+  it("returns nobody when there are no recordings", () => {
+    expect(meetingPeople([], ["e2msolutions.com"], [])).toEqual([]);
   });
 });
 

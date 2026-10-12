@@ -1,5 +1,5 @@
 /** Pure presentation and aggregation logic. No I/O; every function is unit-tested. */
-import type { AnalysisDetail, CallRow, ClientRow, Polarity, Segment, SentimentLabel, SyncResult } from "./model";
+import type { AnalysisDetail, CallRow, ClientRow, Person, Polarity, Segment, SentimentLabel, SyncResult } from "./model";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const RECENT_DAYS = 30;
@@ -227,6 +227,65 @@ export const isInProgress = (status: CallRow["status"]) => status === "running" 
 /** Any call without an analysis can be analysed by hand (manual-only calls, and auto calls left over after a sync). */
 export const canAnalyze = (call: CallRow) => !call.analysis && !isInProgress(call.status) && call.status !== "failed";
 export const canRetry = (call: CallRow) => call.status === "failed";
+
+// Meeting people ------------------------------------------------------------------------------
+
+export interface RecordingPeople {
+  invitees: unknown;
+  recordedByName: string | null;
+  recordedByEmail: string | null;
+}
+
+const cleanText = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+
+/**
+ * Invitees of every recording of a call plus the recorder, one entry per email (or per name when
+ * there is no email). E2M vs client comes from the e2m_domains setting, not Fathom's is_external,
+ * which is unreliable for E2M's two domains. Clients first, then by name.
+ */
+export function meetingPeople(recordings: RecordingPeople[], e2mDomains: string[], speakerNames: (string | null)[]): Person[] {
+  const domains = new Set(e2mDomains.map((d) => d.toLowerCase()));
+  const speakers = new Set(speakerNames.filter((n): n is string => !!n).map((n) => n.trim().toLowerCase()));
+  const byKey = new Map<string, Person>();
+
+  function add(name: string | null, email: string | null, recorder: boolean) {
+    const normalizedEmail = email?.toLowerCase() ?? null;
+    const key = normalizedEmail ?? (name ? `name:${name.toLowerCase()}` : null);
+    if (!key) return;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.name ??= name;
+      existing.recorder ||= recorder;
+      existing.spoke ||= !!name && speakers.has(name.toLowerCase());
+      return;
+    }
+    const domain = normalizedEmail?.split("@")[1] ?? null;
+    byKey.set(key, {
+      name,
+      email: normalizedEmail,
+      side: domain && domains.has(domain) ? "e2m" : "client",
+      recorder,
+      spoke: !!name && speakers.has(name.toLowerCase()),
+    });
+  }
+
+  for (const r of recordings) {
+    for (const invitee of Array.isArray(r.invitees) ? r.invitees : []) {
+      if (invitee && typeof invitee === "object") {
+        const i = invitee as { name?: unknown; email?: unknown };
+        add(cleanText(i.name), cleanText(i.email), false);
+      }
+    }
+    add(cleanText(r.recordedByName), cleanText(r.recordedByEmail), true);
+  }
+
+  return [...byKey.values()].sort(
+    (a, b) =>
+      (a.side === b.side ? 0 : a.side === "client" ? -1 : 1) ||
+      (a.name ?? a.email ?? "").localeCompare(b.name ?? b.email ?? ""),
+  );
+}
 
 // Fathom sync ---------------------------------------------------------------------------------
 

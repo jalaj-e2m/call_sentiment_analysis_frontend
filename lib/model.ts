@@ -91,10 +91,20 @@ export interface Segment {
   text: string;
 }
 
+/** Someone invited to the meeting, from the Fathom calendar invitees of the call's recordings. */
+export interface Person {
+  name: string | null;
+  email: string | null;
+  side: "client" | "e2m";
+  recorder: boolean;
+  spoke: boolean;
+}
+
 export interface CallDetail {
   call: CallRow;
   analysis: AnalysisDetail | null;
   segments: Segment[];
+  people: Person[];
 }
 
 /** Counts from the last manual sync (fathom Edge Function); never titles or names. */
