@@ -2,21 +2,35 @@
  * All data access. Every function takes the server client from getDb(), or null for fixtures,
  * and returns the app's own types (lib/model.ts). Reads go through RLS as the signed-in user.
  */
+import { toCallPeople } from "./access";
 import { manualReasonLabel } from "./analytics";
-import { USE_FIXTURES } from "./env";
-import { FIXTURE_CLIENTS, FIXTURE_FATHOM_ACCOUNT, FIXTURE_SETTINGS, fixtureData } from "./fixtures";
+import { FIXTURE_ROLE, USE_FIXTURES } from "./env";
+import {
+  FIXTURE_MEMBER_ACCOUNTS,
+  FIXTURE_MEMBERS,
+  FIXTURE_SETTINGS,
+  FIXTURE_USER_CHANGES,
+  fixtureCallPeople,
+  fixtureData,
+  fixtureScope,
+  fixtureViewer,
+} from "./fixtures";
 import type {
   AnalysisDetail,
   AnalysisStats,
   CallDetail,
+  CallPeople,
   CallRow,
   ClientRow,
   DroppedCounts,
   FathomAccount,
+  Member,
+  MemberAccount,
   Moment,
   Segment,
   SettingsData,
   SyncResult,
+  UserChange,
 } from "./model";
 import type { AnalysisStatus, Polarity, SentimentLabel } from "./database.types";
 import { meetingPeople } from "./sentiment";
@@ -104,7 +118,7 @@ function toCallRow(raw: RawCall, manualOnlyEmails: string[]): CallRow {
 
 /** Client calls (not excluded) with their current analysis, newest first. */
 export async function getCallRows(db: Db | null): Promise<CallRow[]> {
-  if (!db) return fixture(() => fixtureData().calls);
+  if (!db) return fixture(() => fixtureScope(FIXTURE_ROLE).calls);
   const [result, manualOnlyEmails] = await Promise.all([
     db
       .from("calls")
@@ -123,7 +137,7 @@ export async function getCallRows(db: Db | null): Promise<CallRow[]> {
 
 /** The signed-in user's Fathom account (RLS lets owners read their own row), or null if never connected. */
 export async function getFathomAccount(db: Db | null, userId: string): Promise<FathomAccount | null> {
-  if (!db) return fixture(() => FIXTURE_FATHOM_ACCOUNT);
+  if (!db) return fixture(() => fixtureViewer(FIXTURE_ROLE).account);
   const result = await db
     .from("fathom_accounts")
     .select("vault_secret_id, key_last4, sync_status, last_sync_at, last_sync_error, last_sync_result")
@@ -142,13 +156,13 @@ export async function getFathomAccount(db: Db | null, userId: string): Promise<F
 }
 
 export async function getClients(db: Db | null): Promise<ClientRow[]> {
-  if (!db) return fixture(() => FIXTURE_CLIENTS);
+  if (!db) return fixture(() => fixtureScope(FIXTURE_ROLE).clients);
   const result = await db.from("clients").select("id, name, status").order("name");
   return check(result, "clients");
 }
 
 export async function getClient(db: Db | null, id: string): Promise<ClientRow | null> {
-  if (!db) return fixture(() => FIXTURE_CLIENTS.find((c) => c.id === id) ?? null);
+  if (!db) return fixture(() => fixtureScope(FIXTURE_ROLE).clients.find((c) => c.id === id) ?? null);
   const result = await db.from("clients").select("id, name, status").eq("id", id).maybeSingle();
   return check(result, "client");
 }
@@ -175,7 +189,7 @@ const asObject = <T>(value: unknown): T | null =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as T) : null;
 
 export async function getCallDetail(db: Db | null, id: string): Promise<CallDetail | null> {
-  if (!db) return fixture(() => fixtureData().details.get(id) ?? null);
+  if (!db) return fixture(() => fixtureScope(FIXTURE_ROLE).details.get(id) ?? null);
 
   const [callResult, manualOnlyEmails] = await Promise.all([
     db.from("calls").select(CALL_COLUMNS).eq("id", id).eq("call_type", "client").eq("analyses.is_current", true).maybeSingle(),
@@ -287,4 +301,78 @@ export async function getSettings(db: Db | null): Promise<SettingsData> {
     settings: check(settings, "settings"),
     prompt: p ? { name: p.name, version: p.version, model: p.model, createdAt: p.created_at } : null,
   };
+}
+
+// Admin only (RLS returns just the caller's own rows to everyone else) -------------------------
+
+interface RawProfile {
+  id: string;
+  full_name: string | null;
+  email: string;
+  role: Member["role"];
+  active: boolean;
+  job_title?: string | null;
+  created_at?: string | null;
+}
+
+/** Selected with * so the app keeps working before the job_title migration is applied. */
+export const toProfile = (row: RawProfile) => ({
+  id: row.id,
+  fullName: row.full_name,
+  email: row.email,
+  role: row.role,
+  active: row.active,
+  jobTitle: row.job_title ?? null,
+});
+
+export async function getMembers(db: Db | null): Promise<Member[]> {
+  if (!db) return fixture(() => FIXTURE_MEMBERS);
+  const result = await db.from("profiles").select("*").order("full_name", { ascending: true, nullsFirst: false });
+  return (check(result, "users") as RawProfile[]).map((row) => ({ ...toProfile(row), createdAt: row.created_at ?? null }));
+}
+
+/** Which member each call belongs to (their Fathom key synced it, or they were invited). */
+export async function getCallPeople(db: Db | null): Promise<CallPeople> {
+  if (!db) return fixture(() => fixtureCallPeople(fixtureData().calls));
+  const result = await db.rpc("admin_call_people");
+  return toCallPeople(check(result, "call owners") ?? []);
+}
+
+export async function getMemberAccounts(db: Db | null): Promise<MemberAccount[]> {
+  if (!db) return fixture(() => FIXTURE_MEMBER_ACCOUNTS);
+  const result = await db
+    .from("fathom_accounts")
+    .select("owner_id, vault_secret_id, sync_status, last_sync_at")
+    .not("owner_id", "is", null);
+  return check(result, "Fathom connections").map((a) => ({
+    ownerId: a.owner_id!,
+    connected: a.vault_secret_id !== null,
+    syncStatus: a.sync_status,
+    lastSyncAt: a.last_sync_at,
+  }));
+}
+
+const USER_ACTIONS = ["user_role_changed", "user_title_changed", "user_deactivated", "user_reactivated"] as const;
+
+export async function getUserChanges(db: Db | null, limit = 15): Promise<UserChange[]> {
+  if (!db) return fixture(() => FIXTURE_USER_CHANGES);
+  const result = await db
+    .from("audit_log")
+    .select("id, created_at, user_id, entity_id, action, details")
+    .in("action", [...USER_ACTIONS])
+    .order("id", { ascending: false })
+    .limit(limit);
+  return check(result, "user changes").map((row) => {
+    const details = asObject<{ from?: unknown; to?: unknown }>(row.details);
+    const text = (v: unknown) => (typeof v === "string" ? v : null);
+    return {
+      id: row.id,
+      at: row.created_at,
+      actorId: row.user_id,
+      targetId: row.entity_id,
+      action: row.action as UserChange["action"],
+      from: text(details?.from),
+      to: text(details?.to),
+    };
+  });
 }

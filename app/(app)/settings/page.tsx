@@ -2,10 +2,9 @@ import { ChevronRight, Sparkles } from "lucide-react";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Card, EmptyState, Notice, PageHeader, surfaceClass } from "@/components/ui";
-import { getViewer } from "@/lib/auth";
 import { getSettings } from "@/lib/queries";
 import { formatDate } from "@/lib/sentiment";
-import { getDb } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -129,17 +128,10 @@ function Row({ label, description, children }: { label: string; description: str
 }
 
 export default async function SettingsPage() {
-  const viewer = await getViewer();
-  if (viewer.kind !== "staff" || viewer.profile.role !== "admin") {
-    return (
-      <>
-        <PageHeader title="Settings" />
-        <Notice tone="warning">Settings are visible to admins only.</Notice>
-      </>
-    );
-  }
+  const member = await requireAdmin();
+  if (!member) return null;
 
-  const { settings, prompt } = await getSettings(await getDb());
+  const { settings, prompt } = await getSettings(member.db);
   const byKey = new Map(settings.map((s) => [s.key, s.value]));
   const known = new Set(SECTIONS.flatMap((s) => s.fields.map((f) => f.key)));
   const others = settings.filter((s) => !known.has(s.key));

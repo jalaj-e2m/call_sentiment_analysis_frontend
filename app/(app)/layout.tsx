@@ -2,19 +2,16 @@ import { Plug, ShieldAlert, type LucideIcon } from "lucide-react";
 import { redirect } from "next/navigation";
 import { AppShell, SignOutButton } from "@/components/shell";
 import { SyncProvider } from "@/components/sync";
-import { getViewer } from "@/lib/auth";
-import type { FathomAccount } from "@/lib/model";
-import { getFathomAccount } from "@/lib/queries";
-import { getDb } from "@/lib/supabase/server";
+import { getSession } from "@/lib/session";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const viewer = await getViewer();
+  const { viewer, account, locked } = await getSession();
   if (viewer.kind === "anonymous") redirect("/login");
 
   if (viewer.kind === "no-access") {
     return (
       <Gate icon={ShieldAlert} title="No access" action={<SignOutButton variant="button" />}>
-        Your account does not have access to call sentiment. Ask an admin if you think this is wrong.
+        Your account does not have access to call sentiment yet. Ask an admin to give you a role.
       </Gate>
     );
   }
@@ -27,14 +24,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // The sidebar must not take every page down if the Fathom migration is not applied yet.
-  let account: FathomAccount | null = null;
-  try {
-    account = await getFathomAccount(await getDb(), viewer.profile.id);
-  } catch {
-    account = null;
-  }
-
   const banner = viewer.fixtures ? (
     <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-xs text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
       Preview with fake fixture data. Set the Supabase variables in .env.local to use real data.
@@ -43,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <SyncProvider account={account}>
-      <AppShell profile={viewer.profile} banner={banner}>
+      <AppShell profile={viewer.profile} locked={locked} banner={banner}>
         {children}
       </AppShell>
     </SyncProvider>

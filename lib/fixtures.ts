@@ -18,6 +18,10 @@ import type {
   Segment,
   SentimentLabel,
   SettingsData,
+  CallPeople,
+  Member,
+  MemberAccount,
+  UserChange,
 } from "./model";
 import { meetingPeople } from "./sentiment";
 
@@ -30,7 +34,50 @@ export const FIXTURE_PROFILE: Profile = {
   email: "preview@example.com",
   role: "admin",
   active: true,
+  jobTitle: "AI Adoption Specialist",
 };
+
+const memberId = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const fixtureMember = (n: number, fullName: string, role: Member["role"], jobTitle: string | null, active = true): Member => ({
+  id: memberId(n),
+  fullName,
+  email: `${fullName.toLowerCase().replace(/\s+/g, ".")}@example-staff.com`,
+  role,
+  active,
+  jobTitle,
+  createdAt: new Date(Date.UTC(2026, 8, n)).toISOString(),
+});
+
+/** The preview admin plus invented executors and engineers; one is deactivated. */
+export const FIXTURE_MEMBERS: Member[] = [
+  { ...FIXTURE_PROFILE, createdAt: new Date(Date.UTC(2026, 8, 1)).toISOString() },
+  fixtureMember(2, "Riya Patel", "executor", "Associate AI Adoption Specialist"),
+  fixtureMember(3, "Aman Joshi", "executor", "AI Executor"),
+  fixtureMember(4, "Neha Verma", "engineer", "AI Engineer"),
+  fixtureMember(5, "Kabir Shah", "engineer", "Associate AI Engineer"),
+  fixtureMember(6, "Old Account", "engineer", null, false),
+];
+
+export const FIXTURE_MEMBER_ACCOUNTS: MemberAccount[] = [
+  { ownerId: memberId(2), connected: true, syncStatus: "idle", lastSyncAt: new Date(Date.now() - 3 * 3600_000).toISOString() },
+  { ownerId: memberId(3), connected: true, syncStatus: "failed", lastSyncAt: new Date(Date.now() - 5 * 86_400_000).toISOString() },
+  { ownerId: memberId(4), connected: true, syncStatus: "idle", lastSyncAt: new Date(Date.now() - 26 * 3600_000).toISOString() },
+  { ownerId: memberId(5), connected: false, syncStatus: "idle", lastSyncAt: null },
+];
+
+/** Every call belongs to one of the three synced members; every fourth also lists a second one as invited. */
+export function fixtureCallPeople(calls: CallRow[]): CallPeople {
+  const owners = [memberId(2), memberId(3), memberId(4)];
+  return new Map(
+    calls.map((c, i) => [c.id, i % 4 === 0 ? [owners[i % 3]!, owners[(i + 1) % 3]!] : [owners[i % 3]!]]),
+  );
+}
+
+export const FIXTURE_USER_CHANGES: UserChange[] = [
+  { id: 3, at: new Date(Date.now() - 2 * 86_400_000).toISOString(), actorId: memberId(1), targetId: memberId(3), action: "user_role_changed", from: "engineer", to: "executor" },
+  { id: 2, at: new Date(Date.now() - 6 * 86_400_000).toISOString(), actorId: memberId(1), targetId: memberId(5), action: "user_title_changed", from: null, to: "Associate AI Engineer" },
+  { id: 1, at: new Date(Date.now() - 9 * 86_400_000).toISOString(), actorId: memberId(1), targetId: memberId(6), action: "user_deactivated", from: null, to: null },
+];
 
 const clientId = (n: number) => `c0000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
@@ -346,3 +393,31 @@ export const FIXTURE_SETTINGS: SettingsData = {
   ],
   prompt: { name: "sentiment", version: 2, model: "openai/gpt-4o-mini", createdAt: new Date(0).toISOString() },
 };
+
+/**
+ * Who the preview runs as. FIXTURE_ROLE=executor or engineer shows Riya's or Neha's own calls;
+ * "new" is Kabir, an engineer who has not synced yet. Anything else is the preview admin.
+ */
+export function fixtureViewer(role: string): { profile: Profile; account: FathomAccount | null } {
+  const as = (n: number) => FIXTURE_MEMBERS.find((m) => m.id === memberId(n))!;
+  const strip = (m: Member): Profile => ({ id: m.id, fullName: m.fullName, email: m.email, role: m.role, active: m.active, jobTitle: m.jobTitle });
+  if (role === "executor") return { profile: strip(as(2)), account: FIXTURE_FATHOM_ACCOUNT };
+  if (role === "engineer") return { profile: strip(as(4)), account: FIXTURE_FATHOM_ACCOUNT };
+  if (role === "new") return { profile: strip(as(5)), account: null };
+  return { profile: FIXTURE_PROFILE, account: FIXTURE_FATHOM_ACCOUNT };
+}
+
+/** Fixture data as the preview viewer may see it (the database does this with RLS). */
+export function fixtureScope(role: string) {
+  const data = fixtureData();
+  const { profile } = fixtureViewer(role);
+  if (profile.role === "admin") return { calls: data.calls, clients: FIXTURE_CLIENTS, details: data.details };
+  const people = fixtureCallPeople(data.calls);
+  const calls = data.calls.filter((c) => people.get(c.id)?.includes(profile.id));
+  const clientIds = new Set(calls.map((c) => c.clientId));
+  return {
+    calls,
+    clients: FIXTURE_CLIENTS.filter((c) => clientIds.has(c.id)),
+    details: new Map([...data.details].filter(([id]) => calls.some((c) => c.id === id))),
+  };
+}

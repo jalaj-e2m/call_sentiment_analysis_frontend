@@ -1,6 +1,6 @@
 import { Activity, CircleCheck, Gauge, Inbox, ListChecks, PieChart, TrendingDown } from "lucide-react";
 import Link from "next/link";
-import { RangeControl } from "@/components/controls";
+import { ViewControls } from "@/components/controls";
 import { ScoreTimeline } from "@/components/ScoreTimeline";
 import { MomentDots, ScoreChip } from "@/components/sentiment";
 import { Card, Delta, EmptyState, KpiCard, PageHeader } from "@/components/ui";
@@ -27,10 +27,10 @@ import {
   watchlist,
   type Period,
 } from "@/lib/analytics";
+import { isAdmin, personName } from "@/lib/access";
 import type { CallRow, ClientRow } from "@/lib/model";
-import { getCallRows, getClients } from "@/lib/queries";
 import { formatDate } from "@/lib/sentiment";
-import { getDb } from "@/lib/supabase/server";
+import { loadScope, requireUnlocked } from "@/lib/session";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -123,9 +123,12 @@ function Watchlist({ calls, clients, p, now }: { calls: CallRow[]; clients: Clie
 }
 
 export default async function DashboardPage({ searchParams }: { searchParams: SearchParams }) {
-  const range = parseRange((await searchParams).range);
-  const db = await getDb();
-  const [calls, clients] = await Promise.all([getCallRows(db), getClients(db)]);
+  const member = await requireUnlocked();
+  if (!member) return null;
+  const params = await searchParams;
+  const range = parseRange(params.range);
+  const { calls, clients, members, person } = await loadScope(member.db, member.profile, params.person);
+  const clientHref = (id: string) => rangeHref(`/clients/${id}`, range, person?.id);
   const now = new Date();
   const p = periodFor(range, now);
   const weeks = periodWeeks(p, calls);
@@ -144,12 +147,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
     <>
       <PageHeader
         title="Dashboard"
-        subtitle={`How clients felt on calls in ${phrase}`}
-        actions={<RangeControl range={range} path="/" />}
+        subtitle={`How clients felt on ${person ? `${personName(person)}'s calls` : isAdmin(member.profile) ? "calls" : "your calls"} in ${phrase}`}
+        actions={<ViewControls range={range} path="/" members={members} person={person} />}
       />
       {calls.length === 0 ? (
-        <EmptyState title="No client calls yet." icon={Inbox}>
-          Connect Fathom and click Sync now in the sidebar to import your calls.
+        <EmptyState title={person ? `No client calls for ${personName(person)}.` : "No client calls yet."} icon={Inbox}>
+          {person ? "They have not synced or been invited to a client call yet." : "Connect Fathom and click Sync now in the sidebar to import your calls."}
         </EmptyState>
       ) : (
         <div className="space-y-6">
@@ -236,7 +239,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
           <div className="grid gap-6 xl:grid-cols-2">
             <Card title="Portfolio" description="Average score per client per week. Click a row or cell to open the client.">
               {weeks.length && current.some((c) => c.analysis) ? (
-                <Heatmap rows={portfolioHeatmap(clients, calls, weeks)} weeks={weeks} hrefFor={(id) => rangeHref(`/clients/${id}`, range)} />
+                <Heatmap rows={portfolioHeatmap(clients, calls, weeks)} weeks={weeks} hrefFor={clientHref} />
               ) : (
                 <EmptyState title="No analysed calls in this period." />
               )}
@@ -261,7 +264,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                   rows={mix.map((r) => ({
                     key: r.client.id,
                     label: (
-                      <Link href={rangeHref(`/clients/${r.client.id}`, range)} className="hover:underline">
+                      <Link href={clientHref(r.client.id)} className="hover:underline">
                         {r.client.name}
                       </Link>
                     ),

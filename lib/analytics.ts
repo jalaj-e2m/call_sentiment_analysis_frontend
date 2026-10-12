@@ -50,9 +50,10 @@ function inPreviousPeriod(iso: string | null, p: Period): boolean {
 
 export const callsInPeriod = (calls: CallRow[], p: Period) => calls.filter((c) => inPeriod(c.startedAt, p));
 
-/** Link that keeps the date range (the default range stays out of the URL). */
-export function rangeHref(path: string, range: RangeKey): string {
-  return range === DEFAULT_RANGE ? path : `${path}${path.includes("?") ? "&" : "?"}range=${range}`;
+/** Link that keeps the date range and the admin's person filter (defaults stay out of the URL). */
+export function rangeHref(path: string, range: RangeKey, person?: string | null): string {
+  const params = [range === DEFAULT_RANGE ? null : `range=${range}`, person ? `person=${encodeURIComponent(person)}` : null].filter(Boolean);
+  return params.length ? `${path}${path.includes("?") ? "&" : "?"}${params.join("&")}` : path;
 }
 
 export function periodPhrase(range: RangeKey): string {

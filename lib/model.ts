@@ -8,6 +8,34 @@ export interface Profile {
   email: string;
   role: AppRole;
   active: boolean;
+  jobTitle: string | null;
+}
+
+/** A member as the Users page and the admin person filter see them. */
+export interface Member extends Profile {
+  createdAt: string | null;
+}
+
+/** call id -> ids of the members it belongs to (synced with their Fathom key, or they were invited). */
+export type CallPeople = Map<string, string[]>;
+
+/** A Fathom connection as admins see it on the Users page; never the key. */
+export interface MemberAccount {
+  ownerId: string;
+  connected: boolean;
+  syncStatus: "idle" | "running" | "failed";
+  lastSyncAt: string | null;
+}
+
+/** One user-management change from audit_log. */
+export interface UserChange {
+  id: number;
+  at: string;
+  actorId: string | null;
+  targetId: string | null;
+  action: "user_role_changed" | "user_title_changed" | "user_deactivated" | "user_reactivated";
+  from: string | null;
+  to: string | null;
 }
 
 export interface MomentLite {

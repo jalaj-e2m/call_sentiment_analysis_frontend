@@ -1,7 +1,7 @@
 import { Building, Clock, TrendingDown, TriangleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { RangeControl } from "@/components/controls";
+import { ViewControls } from "@/components/controls";
 import { RowLink } from "@/components/RowLink";
 import { ScoreChip } from "@/components/sentiment";
 import { Card, EmptyState, PageHeader, TableWrap, rowClass, td, th } from "@/components/ui";
@@ -18,8 +18,8 @@ import {
   rangeHref,
   type ClientOverview,
 } from "@/lib/analytics";
-import { getCallRows, getClients } from "@/lib/queries";
-import { getDb } from "@/lib/supabase/server";
+import { personName } from "@/lib/access";
+import { loadScope, requireUnlocked } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Clients" };
 
@@ -35,9 +35,11 @@ function attentionNotes(r: ClientOverview): { text: string; tone: "alert" | "war
 }
 
 export default async function ClientsPage({ searchParams }: { searchParams: SearchParams }) {
-  const range = parseRange((await searchParams).range);
-  const db = await getDb();
-  const [clients, calls] = await Promise.all([getClients(db), getCallRows(db)]);
+  const member = await requireUnlocked();
+  if (!member) return null;
+  const params = await searchParams;
+  const range = parseRange(params.range);
+  const { calls, clients, members, person } = await loadScope(member.db, member.profile, params.person);
   const now = new Date();
   const p = periodFor(range, now);
   const rows = clientOverview(clients, calls, p, periodWeeks(p, calls), now);
@@ -46,11 +48,11 @@ export default async function ClientsPage({ searchParams }: { searchParams: Sear
     <>
       <PageHeader
         title="Clients"
-        subtitle={`Most attention needed first. Score = average of the last ${ROLLING_WINDOW} scored calls; coverage, trend and moments cover ${periodPhrase(range)}.`}
-        actions={<RangeControl range={range} path="/clients" />}
+        subtitle={`${person ? `Clients on ${personName(person)}'s calls. ` : ""}Most attention needed first. Score = average of the last ${ROLLING_WINDOW} scored calls; coverage, trend and moments cover ${periodPhrase(range)}.`}
+        actions={<ViewControls range={range} path="/clients" members={members} person={person} />}
       />
       {rows.length === 0 ? (
-        <EmptyState title="No clients yet." icon={Building} />
+        <EmptyState title={person ? `No clients on ${personName(person)}'s calls yet.` : "No clients yet."} icon={Building} />
       ) : (
         <Card flush>
           <TableWrap minWidth={820}>
@@ -79,7 +81,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Sear
             <tbody>
               {rows.map((r) => {
                 const notes = attentionNotes(r);
-                const href = rangeHref(`/clients/${r.client.id}`, range);
+                const href = rangeHref(`/clients/${r.client.id}`, range, person?.id);
                 return (
                   <RowLink key={r.client.id} href={href} className={rowClass}>
                     <td className={td}>

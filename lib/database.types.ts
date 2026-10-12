@@ -5,7 +5,8 @@
  */
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-export type AppRole = "admin" | "specialist" | "associate" | "engineer";
+/** specialist and associate are retired: no user has them and they grant nothing. */
+export type AppRole = "admin" | "executor" | "engineer" | "specialist" | "associate";
 export type SentimentLabel = "happy" | "neutral" | "unhappy";
 export type AnalysisStatus = "not_started" | "queued" | "running" | "done" | "failed";
 export type Polarity = "positive" | "negative" | "neutral";
@@ -15,7 +16,15 @@ type Table<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Relati
 export interface Database {
   public: {
     Tables: {
-      profiles: Table<{ id: string; full_name: string | null; email: string; role: AppRole; active: boolean }>;
+      profiles: Table<{
+        id: string;
+        full_name: string | null;
+        email: string;
+        role: AppRole;
+        active: boolean;
+        job_title: string | null;
+        created_at: string;
+      }>;
       clients: Table<{ id: string; name: string; status: string }>;
       calls: Table<{
         id: string;
@@ -96,9 +105,24 @@ export interface Database {
         is_active: boolean;
         created_at: string;
       }>;
+      audit_log: Table<{
+        id: number;
+        user_id: string | null;
+        action: string;
+        entity: string | null;
+        entity_id: string | null;
+        details: Json | null;
+        created_at: string;
+      }>;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      admin_call_people: { Args: Record<string, never>; Returns: { call_id: string; user_id: string }[] };
+      admin_update_user: {
+        Args: { p_user_id: string; p_role: AppRole; p_job_title: string | null; p_active: boolean };
+        Returns: undefined;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

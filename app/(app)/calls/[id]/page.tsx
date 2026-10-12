@@ -7,20 +7,24 @@ import { MeetingPeople } from "@/components/MeetingPeople";
 import { MomentsAndTranscript } from "@/components/MomentsAndTranscript";
 import { LowEvidenceNotice, ScoreValue, SentimentBadge, StatusPill } from "@/components/sentiment";
 import { Card, EmptyState, Notice, PageHeader, linkClass } from "@/components/ui";
+import { canAnalyzeManual } from "@/lib/access";
 import { stripClientName } from "@/lib/analytics";
 import { getCallDetail } from "@/lib/queries";
 import { canAnalyze, canRetry, formatDate, formatDuration, isInProgress, isLowEvidence } from "@/lib/sentiment";
-import { getDb } from "@/lib/supabase/server";
+import { requireUnlocked } from "@/lib/session";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function CallDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!UUID_RE.test(id)) notFound();
-  const detail = await getCallDetail(await getDb(), id);
+  const member = await requireUnlocked();
+  if (!member) return null;
+  const detail = await getCallDetail(member.db, id);
   if (!detail) notFound();
   const { call, analysis, segments, people } = detail;
   const title = stripClientName(call.title, call.clientName);
+  const mayAnalyze = (canAnalyze(call) || canRetry(call)) && (!call.requiresManual || canAnalyzeManual(member.profile.role));
 
   return (
     <>
@@ -48,7 +52,7 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
         actions={
           <>
             <StatusPill status={call.status} />
-            {canAnalyze(call) || canRetry(call) ? <AnalyzeButton callId={call.id} retry={canRetry(call)} /> : null}
+            {mayAnalyze ? <AnalyzeButton callId={call.id} retry={canRetry(call)} /> : null}
           </>
         }
       />
@@ -65,7 +69,9 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
             {isInProgress(call.status)
               ? "This page refreshes automatically."
               : call.requiresManual
-                ? `This call needs manual analysis (${call.manualLabel ?? "marked for manual analysis"}). Use Analyze to run it.`
+                ? `This call needs manual analysis (${call.manualLabel ?? "marked for manual analysis"}). ${
+                    mayAnalyze ? "Use Analyze to run it." : "An admin will run it."
+                  }`
                 : "Use Analyze to run it."}
           </EmptyState>
           <MeetingPeople people={people} />

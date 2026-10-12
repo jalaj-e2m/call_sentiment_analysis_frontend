@@ -1,7 +1,7 @@
 import { Activity, Clock, Gauge, Inbox, TrendingDown } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { RangeControl } from "@/components/controls";
+import { ViewControls } from "@/components/controls";
 import { ScoreTimeline } from "@/components/ScoreTimeline";
 import { EmotionChip, MomentDots, ScoreChip, SentimentBadge, StatusPill } from "@/components/sentiment";
 import { Card, EmptyState, KpiCard, PageHeader } from "@/components/ui";
@@ -17,12 +17,14 @@ import {
   periodFor,
   periodPhrase,
   periodWeeks,
+  rangeHref,
   scoreTimeline,
   stripClientName,
 } from "@/lib/analytics";
-import { getCallRows, getClient } from "@/lib/queries";
+import { personName } from "@/lib/access";
+import { getClient } from "@/lib/queries";
 import { formatDate, formatDuration } from "@/lib/sentiment";
-import { getDb } from "@/lib/supabase/server";
+import { loadScope, requireUnlocked } from "@/lib/session";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -31,9 +33,12 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   const [{ id }, query] = await Promise.all([params, searchParams]);
   if (!UUID_RE.test(id)) notFound();
   const range = parseRange(query.range);
-  const db = await getDb();
-  const [client, allCalls] = await Promise.all([getClient(db, id), getCallRows(db)]);
+  const member = await requireUnlocked();
+  if (!member) return null;
+  const [client, scope] = await Promise.all([getClient(member.db, id), loadScope(member.db, member.profile, query.person)]);
   if (!client) notFound();
+  const { members, person } = scope;
+  const allCalls = scope.calls;
 
   const now = new Date();
   const p = periodFor(range, now);
@@ -50,10 +55,10 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Clients", href: range === "30" ? "/clients" : `/clients?range=${range}` }, { label: client.name }]}
+        breadcrumbs={[{ label: "Clients", href: rangeHref("/clients", range, person?.id) }, { label: client.name }]}
         title={client.name}
-        subtitle={`${calls.length} calls in total · ${current.length} in ${phrase}`}
-        actions={<RangeControl range={range} path={`/clients/${id}`} />}
+        subtitle={`${person ? `${personName(person)}'s calls · ` : ""}${calls.length} calls in total · ${current.length} in ${phrase}`}
+        actions={<ViewControls range={range} path={`/clients/${id}`} members={members} person={person} />}
       />
       {calls.length === 0 ? (
         <EmptyState title="No calls for this client yet." icon={Inbox} />

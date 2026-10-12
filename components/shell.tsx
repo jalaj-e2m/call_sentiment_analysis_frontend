@@ -1,10 +1,11 @@
 "use client";
 
-import { AudioLines, Building, LayoutDashboard, LogOut, Menu, Moon, Phone, Plug, Settings, Sun, X } from "lucide-react";
+import { AudioLines, Building, LayoutDashboard, Lock, LogOut, Menu, Moon, Phone, Plug, Settings, Sun, UsersRound, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useSyncExternalStore, type ReactNode } from "react";
+import { displayTitle } from "@/lib/access";
 import { parseRange, rangeHref } from "@/lib/analytics";
 import type { Profile } from "@/lib/model";
 import { getBrowserDb } from "@/lib/supabase/browser";
@@ -12,39 +13,65 @@ import { SyncButton, SyncPanel } from "./sync";
 import { Tip, TooltipProvider } from "./tooltip";
 import { buttonClass, iconButtonClass } from "./ui";
 
-const LINKS: { href: string; label: string; icon: LucideIcon; adminOnly?: boolean }[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/calls", label: "Calls", icon: Phone },
-  { href: "/clients", label: "Clients", icon: Building },
+/** data: locked until the first Fathom sync for executors and engineers. */
+const LINKS: { href: string; label: string; icon: LucideIcon; adminOnly?: boolean; data?: boolean }[] = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, data: true },
+  { href: "/calls", label: "Calls", icon: Phone, data: true },
+  { href: "/clients", label: "Clients", icon: Building, data: true },
   { href: "/fathom", label: "Fathom", icon: Plug },
+  { href: "/users", label: "Users", icon: UsersRound, adminOnly: true },
   { href: "/settings", label: "Settings", icon: Settings, adminOnly: true },
 ];
 
-/** Nav links keep the current date range so switching pages does not reset it. */
-function NavLinks({ isAdmin, rail, onNavigate }: { isAdmin: boolean; rail: boolean; onNavigate?: () => void }) {
+const LOCKED_HINT = "Sync your Fathom calls first";
+
+interface NavProps {
+  isAdmin: boolean;
+  locked: boolean;
+  rail?: boolean;
+  onNavigate?: () => void;
+}
+
+/** Nav links keep the date range and the admin's person filter so switching pages does not reset them. */
+function NavLinks(props: NavProps) {
   const pathname = usePathname();
   const params = useSearchParams();
   const range = parseRange(params.get("range") ?? undefined);
-  return <NavList isAdmin={isAdmin} rail={rail} onNavigate={onNavigate} pathname={pathname} hrefFor={(h) => rangeHref(h, range)} />;
+  const person = params.get("person");
+  return <NavList {...props} pathname={pathname} hrefFor={(h) => rangeHref(h, range, props.isAdmin ? person : null)} />;
 }
 
-function NavList({
-  isAdmin,
-  rail,
-  onNavigate,
-  pathname,
-  hrefFor,
-}: {
-  isAdmin: boolean;
-  rail: boolean;
-  onNavigate?: () => void;
-  pathname: string;
-  hrefFor: (href: string) => string;
-}) {
+function NavList({ isAdmin, locked, rail = false, onNavigate, pathname, hrefFor }: NavProps & { pathname: string; hrefFor: (href: string) => string }) {
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const itemShape = rail ? "h-9 w-9 justify-center" : "gap-2.5 px-2.5 py-1.5";
   return (
     <nav className={`flex flex-col gap-0.5 text-sm ${rail ? "items-center" : ""}`} aria-label="Main">
-      {LINKS.filter((l) => isAdmin || !l.adminOnly).map(({ href, label, icon: Icon }) => {
+      {LINKS.filter((l) => isAdmin || !l.adminOnly).map(({ href, label, icon: Icon, data }) => {
+        if (locked && data) {
+          const off = (
+            <span
+              key={href}
+              role="link"
+              aria-disabled="true"
+              aria-label={`${label} (locked: ${LOCKED_HINT.toLowerCase()})`}
+              tabIndex={0}
+              className={`flex cursor-not-allowed items-center rounded-md font-medium text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 dark:text-zinc-600 ${itemShape}`}
+            >
+              <Icon className="h-4 w-4" aria-hidden />
+              {rail ? null : (
+                <>
+                  {label}
+                  <Lock className="ml-auto h-3 w-3" aria-hidden />
+                </>
+              )}
+            </span>
+          );
+          return (
+            <Tip key={href} content={`${label}: ${LOCKED_HINT}`} side="right">
+              {off}
+            </Tip>
+          );
+        }
         const on = active(href);
         const link = (
           <Link
@@ -53,9 +80,7 @@ function NavList({
             onClick={onNavigate}
             aria-current={on ? "page" : undefined}
             aria-label={rail ? label : undefined}
-            className={`flex items-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 ${
-              rail ? "h-9 w-9 justify-center" : "gap-2.5 px-2.5 py-1.5"
-            } ${
+            className={`flex items-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 ${itemShape} ${
               on
                 ? "bg-zinc-100 text-zinc-950 dark:bg-zinc-800 dark:text-white"
                 : "text-zinc-600 hover:bg-zinc-100/70 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100"
@@ -77,11 +102,11 @@ function NavList({
   );
 }
 
-export function Nav({ isAdmin, rail = false, onNavigate }: { isAdmin: boolean; rail?: boolean; onNavigate?: () => void }) {
+export function Nav(props: NavProps) {
   const pathname = usePathname();
   return (
-    <Suspense fallback={<NavList isAdmin={isAdmin} rail={rail} onNavigate={onNavigate} pathname={pathname} hrefFor={(h) => h} />}>
-      <NavLinks isAdmin={isAdmin} rail={rail} onNavigate={onNavigate} />
+    <Suspense fallback={<NavList {...props} pathname={pathname} hrefFor={(h) => h} />}>
+      <NavLinks {...props} />
     </Suspense>
   );
 }
@@ -163,18 +188,18 @@ function Avatar({ profile }: { profile: Profile }) {
   );
 }
 
-function SidebarBody({ profile, onNavigate }: { profile: Profile; onNavigate?: () => void }) {
+function SidebarBody({ profile, locked, onNavigate }: { profile: Profile; locked: boolean; onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col gap-6 px-3 py-4">
       <Brand />
-      <Nav isAdmin={profile.role === "admin"} onNavigate={onNavigate} />
+      <Nav isAdmin={profile.role === "admin"} locked={locked} onNavigate={onNavigate} />
       <div className="mt-auto space-y-3">
         <SyncPanel />
         <div className="flex items-center gap-2.5 border-t border-zinc-200 pt-3 dark:border-zinc-800">
           <Avatar profile={profile} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{profile.fullName ?? profile.email}</p>
-            <p className="text-xs capitalize text-zinc-600 dark:text-zinc-400">{profile.role}</p>
+            <p className="truncate text-xs text-zinc-600 dark:text-zinc-400">{displayTitle(profile)}</p>
           </div>
           <ThemeToggle />
           <SignOutButton />
@@ -185,7 +210,7 @@ function SidebarBody({ profile, onNavigate }: { profile: Profile; onNavigate?: (
 }
 
 /** Tablet: icon rail with tooltips. */
-function RailBody({ profile }: { profile: Profile }) {
+function RailBody({ profile, locked }: { profile: Profile; locked: boolean }) {
   return (
     <div className="flex h-full flex-col items-center gap-6 py-4">
       <Tip content="Call Sentiment" side="right">
@@ -193,12 +218,12 @@ function RailBody({ profile }: { profile: Profile }) {
           <BrandMark />
         </Link>
       </Tip>
-      <Nav isAdmin={profile.role === "admin"} rail />
+      <Nav isAdmin={profile.role === "admin"} locked={locked} rail />
       <div className="mt-auto flex flex-col items-center gap-2">
         <SyncButton size="icon" />
         <ThemeToggle />
         <SignOutButton />
-        <Tip content={`${profile.fullName ?? profile.email} (${profile.role})`} side="right">
+        <Tip content={`${profile.fullName ?? profile.email} (${displayTitle(profile)})`} side="right">
           <button type="button" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50" aria-label="Signed-in user">
             <Avatar profile={profile} />
           </button>
@@ -208,7 +233,17 @@ function RailBody({ profile }: { profile: Profile }) {
   );
 }
 
-export function AppShell({ profile, banner, children }: { profile: Profile; banner?: ReactNode; children: ReactNode }) {
+export function AppShell({
+  profile,
+  locked = false,
+  banner,
+  children,
+}: {
+  profile: Profile;
+  locked?: boolean;
+  banner?: ReactNode;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <TooltipProvider>
@@ -220,10 +255,10 @@ export function AppShell({ profile, banner, children }: { profile: Profile; bann
           Skip to content
         </a>
         <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 border-r border-zinc-200 bg-white lg:block dark:border-zinc-800 dark:bg-zinc-900">
-          <SidebarBody profile={profile} />
+          <SidebarBody profile={profile} locked={locked} />
         </aside>
         <aside className="fixed inset-y-0 left-0 z-30 hidden w-16 border-r border-zinc-200 bg-white md:block lg:hidden dark:border-zinc-800 dark:bg-zinc-900">
-          <RailBody profile={profile} />
+          <RailBody profile={profile} locked={locked} />
         </aside>
 
         <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-zinc-200 bg-white/90 px-4 backdrop-blur md:hidden dark:border-zinc-800 dark:bg-zinc-900/90">
@@ -245,7 +280,7 @@ export function AppShell({ profile, banner, children }: { profile: Profile; bann
               >
                 <X className="h-4 w-4" aria-hidden />
               </button>
-              <SidebarBody profile={profile} onNavigate={() => setOpen(false)} />
+              <SidebarBody profile={profile} locked={locked} onNavigate={() => setOpen(false)} />
             </div>
           </div>
         ) : null}

@@ -9,3 +9,6 @@ export const SUPABASE_CONFIGURED = SUPABASE_URL !== "" && SUPABASE_ANON_KEY !== 
  * data can never appear in an app that is connected to the real project.
  */
 export const USE_FIXTURES = process.env.NEXT_PUBLIC_USE_FIXTURES === "true" && !SUPABASE_CONFIGURED;
+
+/** Fixture previews only: view as "executor", "engineer" or "new" (engineer before the first sync). Server-side. */
+export const FIXTURE_ROLE = USE_FIXTURES ? (process.env.FIXTURE_ROLE ?? "").trim() : "";

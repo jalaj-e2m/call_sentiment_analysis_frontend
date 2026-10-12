@@ -57,3 +57,15 @@ One line per choice made while building without questions.
 - Calls filters and sorting are client-side state seeded from URL params (`client`, `label`, `status`, `manual=1`); 25 rows per page.
 - Radix Popover and Tooltip are used directly instead of a full shadcn/ui setup.
 - Layout: content max-w-[1400px]; full sidebar from `lg`, icon rail on `md`, drawer below `md`.
+
+## Role-based access (frontend)
+
+- The database (RLS) decides what each user sees; the frontend only mirrors it. Executors and engineers get their own calls from the same queries, with no extra filtering.
+- `lib/session.ts` loads the viewer and their Fathom account once per request (React `cache`), shared by the layout and pages. Pages call `requireUnlocked()` / `requireAdmin()` and render nothing when the layout is already showing a gate.
+- Setup lock: an executor or engineer without `fathom_accounts.last_sync_at` is redirected from Dashboard, Calls, Clients and call/client pages to the Fathom page, which becomes "Set up your workspace". The nav shows those links locked with a tooltip. After the first sync, the page shows "Open dashboard".
+- Person filter: admins only, `?person=<user id>` next to `?range=`, on Dashboard, Calls, Clients and client detail. Ownership comes from `admin_call_people()`, the same rule as RLS. Nav links and range links keep it. An unknown id means everyone.
+- If the RBAC migration is not applied yet, the person filter is hidden and the Users page shows a "run db push" message; other pages keep working (profiles are read with `*`, so a missing `job_title` column is harmless).
+- Users page (admin): one table with a role control, inline job title edit, Fathom status, period numbers (analysed / total, coverage, average score, unhappy) and deactivate / reactivate. Role and active changes need an inline confirmation; title edits do not. Your own role and active flag are disabled. Saving goes through a server action that calls `admin_update_user`, which re-checks everything and writes the audit log; recent changes come from `audit_log`.
+- Manual-only calls show "Admin only" instead of Analyze for non-admins (the Edge Function refuses them too).
+- The sidebar shows the job title when set, otherwise the role.
+- Fixtures: six invented members, call ownership by index, and three history entries. `FIXTURE_ROLE=executor|engineer|new` previews those views; scoping in fixture mode copies the RLS rule.

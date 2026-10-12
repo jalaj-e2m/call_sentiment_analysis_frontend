@@ -76,7 +76,18 @@ function SortHeader({
   );
 }
 
-export function CallsTable({ calls, clients, initial }: { calls: CallRow[]; clients: ClientRow[]; initial: CallFilters }) {
+export function CallsTable({
+  calls,
+  clients,
+  initial,
+  canAnalyzeManual,
+}: {
+  calls: CallRow[];
+  clients: ClientRow[];
+  initial: CallFilters;
+  /** Admins analyse manual-only calls; everyone else sees "Admin only". */
+  canAnalyzeManual: boolean;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<CallFilters>(initial);
@@ -334,7 +345,7 @@ export function CallsTable({ calls, clients, initial }: { calls: CallRow[]; clie
                     </td>
                     <td className={td}>{c.analysis ? <MomentDots {...momentCounts(c.analysis.moments)} /> : null}</td>
                     <td className={td}>
-                      <StatusCell call={c} shown={shown} onStart={() => setPending((p) => ({ ...p, [c.id]: c.status }))} onDone={() => clearPending(c.id)} />
+                      <StatusCell call={c} shown={shown} canAnalyzeManual={canAnalyzeManual} onStart={() => setPending((p) => ({ ...p, [c.id]: c.status }))} onDone={() => clearPending(c.id)} />
                     </td>
                   </tr>
                 );
@@ -363,14 +374,35 @@ export function CallsTable({ calls, clients, initial }: { calls: CallRow[]; clie
   );
 }
 
-/** One cell: Done, Running (spinner), Failed with Retry, or Analyze. */
-function StatusCell({ call, shown, onStart, onDone }: { call: CallRow; shown: AnalysisStatus; onStart: () => void; onDone: () => void }) {
+/** One cell: Done, Running (spinner), Failed with Retry, Analyze, or Admin only for manual-only calls. */
+function StatusCell({
+  call,
+  shown,
+  canAnalyzeManual,
+  onStart,
+  onDone,
+}: {
+  call: CallRow;
+  shown: AnalysisStatus;
+  canAnalyzeManual: boolean;
+  onStart: () => void;
+  onDone: () => void;
+}) {
   if (isInProgress(shown)) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300">
         <Spinner />
         {shown === "queued" ? "Queued" : "Running"}
       </span>
+    );
+  }
+  if (call.requiresManual && !canAnalyzeManual && (canRetry(call) || canAnalyze(call))) {
+    return (
+      <Tip content="Manual-only call: an admin analyses it">
+        <button type="button" className="text-xs text-zinc-600 underline decoration-dotted underline-offset-2 dark:text-zinc-400">
+          Admin only
+        </button>
+      </Tip>
     );
   }
   if (canRetry(call)) {
