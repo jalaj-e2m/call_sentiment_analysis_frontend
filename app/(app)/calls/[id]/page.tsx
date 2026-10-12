@@ -7,7 +7,6 @@ import { MeetingPeople } from "@/components/MeetingPeople";
 import { MomentsAndTranscript } from "@/components/MomentsAndTranscript";
 import { LowEvidenceNotice, ScoreValue, SentimentBadge, StatusPill } from "@/components/sentiment";
 import { Card, EmptyState, Notice, PageHeader, linkClass } from "@/components/ui";
-import { canAnalyzeManual } from "@/lib/access";
 import { stripClientName } from "@/lib/analytics";
 import { getCallDetail } from "@/lib/queries";
 import { canAnalyze, canRetry, formatDate, formatDuration, isInProgress, isLowEvidence } from "@/lib/sentiment";
@@ -24,7 +23,7 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
   if (!detail) notFound();
   const { call, analysis, segments, people } = detail;
   const title = stripClientName(call.title, call.clientName);
-  const mayAnalyze = (canAnalyze(call) || canRetry(call)) && (!call.requiresManual || canAnalyzeManual(member.profile.role));
+  const mayAnalyze = canAnalyze(call) || canRetry(call);
 
   return (
     <>
@@ -69,10 +68,8 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
             {isInProgress(call.status)
               ? "This page refreshes automatically."
               : call.requiresManual
-                ? `This call needs manual analysis (${call.manualLabel ?? "marked for manual analysis"}). ${
-                    mayAnalyze ? "Use Analyze to run it." : "An admin will run it."
-                  }`
-                : "Use Analyze to run it."}
+                ? `This call is not analysed automatically (${call.manualLabel ?? "marked for manual analysis"}). Use Analyze to run it; everyone on the call will see the same analysis.`
+                : "Use Analyze to run it. Everyone on the call will see the same analysis."}
           </EmptyState>
           <MeetingPeople people={people} />
         </div>

@@ -37,7 +37,6 @@ export default async function CallsPage({ searchParams }: { searchParams: Search
         <CallsTable
           calls={calls}
           clients={clients}
-          canAnalyzeManual={admin}
           initial={{
             clients: list(params.client),
             labels: list(params.label),

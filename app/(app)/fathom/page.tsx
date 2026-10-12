@@ -99,7 +99,7 @@ export default async function FathomPage() {
               New client calls are analysed automatically. Keep this tab open until it finishes; anything left shows an
               Analyze button on Calls.
             </li>
-            <li>Manual-only calls are imported but not analysed automatically; an admin runs those.</li>
+            <li>Manual-only calls are imported but not analysed automatically; open one and click Analyze. Everyone on the call sees the same analysis.</li>
             <li>Syncing twice is safe: calls already imported are skipped.</li>
           </ul>
         </Card>

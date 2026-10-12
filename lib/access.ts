@@ -34,9 +34,6 @@ export const displayTitle = (profile: Pick<Profile, "role" | "jobTitle">): strin
 export const needsSetup = (profile: Pick<Profile, "role">, account: Pick<FathomAccount, "lastSyncAt"> | null): boolean =>
   !isAdmin(profile) && !account?.lastSyncAt;
 
-/** Manual-only calls are analysed by admins. */
-export const canAnalyzeManual = (role: AppRole): boolean => role === "admin";
-
 export const personName = (m: Pick<Profile, "fullName" | "email">): string => m.fullName?.trim() || m.email;
 
 /** The ?person= value when it names a known member, else null (everyone). */

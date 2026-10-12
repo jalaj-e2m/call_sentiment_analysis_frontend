@@ -21,7 +21,7 @@ With `NEXT_PUBLIC_USE_FIXTURES=true` and both Supabase variables empty, the app 
 Login is invite-only (email and password, no sign-up). Three roles, enforced by the database (RLS), not just the UI:
 
 - **Admin** sees every call and client, can filter any page by person (`?person=`), and manages users on the Users page (role, job title, deactivate). Settings and Users are admin-only.
-- **Executor** and **Engineer** see only their own calls (synced with their Fathom key, or they were invited) and the clients on those calls. Until their first Fathom sync they only see the setup page. Manual-only calls are analysed by admins.
+- **Executor** and **Engineer** see only their own calls (synced with their Fathom key, or they were invited) and the clients on those calls. Until their first Fathom sync they only see the setup page. They can analyse any of their calls, manual-only included. Each call has one analysis shared by everyone on it; only an admin can re-run it.
 
 New users with a company email start as active engineers; anyone else, inactive users and users without a profile see "No access".
 
