@@ -69,3 +69,7 @@ One line per choice made while building without questions.
 - Executors and engineers can analyse manual-only calls they are on (this replaces the earlier "Admin only" rule). The first person to click Analyze creates the one shared analysis; everyone else on the call sees it, and only an admin can re-run it.
 - The sidebar shows the job title when set, otherwise the role.
 - Fixtures: six invented members, call ownership by index, and three history entries. `FIXTURE_ROLE=executor|engineer|new` previews those views; scoping in fixture mode copies the RLS rule.
+
+## Pitch deck
+
+- `/demo` is a hard-coded slide deck (sample data only) for pitching the product: arrow keys move, N toggles speaker notes, F goes full screen, and the slide number lives in the URL hash. It is the one page reachable without signing in, because it holds no real data.

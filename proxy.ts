@@ -23,8 +23,10 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   const onLogin = request.nextUrl.pathname.startsWith("/login");
+  // The pitch deck shows only hard-coded sample data.
+  const onDemo = request.nextUrl.pathname === "/demo";
 
-  if (!user && !onLogin) return NextResponse.redirect(new URL("/login", request.url));
+  if (!user && !onLogin && !onDemo) return NextResponse.redirect(new URL("/login", request.url));
   if (user && onLogin) return NextResponse.redirect(new URL("/", request.url));
   return response;
 }

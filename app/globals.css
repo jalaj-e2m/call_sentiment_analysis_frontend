@@ -86,7 +86,25 @@ body {
   animation: flash-line 2.4s ease-out;
 }
 
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.slide-in {
+  animation: slide-in 0.35s ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .slide-in {
+    animation: none;
+  }
   .flash-line {
     animation: none;
     outline: 2px solid rgb(250 204 21 / 0.6);
