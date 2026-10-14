@@ -1,5 +1,6 @@
 import { Plug, ShieldAlert, type LucideIcon } from "lucide-react";
 import { redirect } from "next/navigation";
+import { Annotator } from "@/components/Annotator";
 import { AppShell, SignOutButton } from "@/components/shell";
 import { SyncProvider } from "@/components/sync";
 import { getSession } from "@/lib/session";
@@ -35,6 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AppShell profile={viewer.profile} locked={locked} banner={banner}>
         {children}
       </AppShell>
+      <Annotator requireAlt />
     </SyncProvider>
   );
 }

@@ -3,17 +3,22 @@ import {
   AudioLines,
   BellRing,
   Building2,
+  CalendarDays,
   Check,
   Clock,
   Coins,
   Download,
   EyeOff,
+  FileText,
   GitMerge,
   Headphones,
   LayoutDashboard,
   LayoutGrid,
+  Mic,
   Plug,
   Sparkles,
+  Users,
+  Video,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -97,6 +102,53 @@ function Track({ steps, ending, tone }: { steps: string[]; ending: string; tone:
   );
 }
 
+function FathomSlide() {
+  const outputs: { icon: LucideIcon; title: string; text: string }[] = [
+    { icon: Video, title: "Recording", text: "The full call, on Zoom, Google Meet or Teams" },
+    { icon: FileText, title: "Transcript", text: "Who said what, with timestamps" },
+    { icon: Users, title: "Attendees", text: "Everyone on the calendar invite, with their email" },
+    { icon: CalendarDays, title: "Title and time", text: "The meeting name, date and length" },
+  ];
+  return (
+    <div>
+      <Heading kicker="Where our data comes from">First, what Fathom does</Heading>
+      <div className="grid items-center gap-5 lg:grid-cols-[1fr_auto_1.4fr_auto_1fr]">
+        <article className={`${card} text-center`}>
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
+            <Mic className="h-6 w-6" aria-hidden />
+          </span>
+          <h3 className="mt-4 text-xl font-semibold">Fathom</h3>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">An AI note-taker that joins our client calls and records them, for every team member.</p>
+        </article>
+        <ArrowRight className="mx-auto h-6 w-6 rotate-90 text-zinc-400 lg:rotate-0" aria-hidden />
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {outputs.map((o) => (
+            <li key={o.title} className={`${card} flex gap-3 p-4`}>
+              <IconTile icon={o.icon} />
+              <div>
+                <p className="font-semibold">{o.title}</p>
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">{o.text}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <ArrowRight className="mx-auto h-6 w-6 rotate-90 text-zinc-400 lg:rotate-0" aria-hidden />
+        <article className={`${card} border-indigo-200 text-center dark:border-indigo-500/40`}>
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-white">
+            <AudioLines className="h-6 w-6" aria-hidden />
+          </span>
+          <h3 className="mt-4 text-xl font-semibold">Call Sentiment</h3>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">Reads all of it and tells us how each client feels.</p>
+        </article>
+      </div>
+      <p className="mt-10 text-center text-xl font-medium text-balance">
+        Fathom tells us <span className="text-zinc-500">what was said</span>. Call Sentiment tells us{" "}
+        <span className="text-indigo-600 dark:text-indigo-400">how the client felt, and where to act</span>.
+      </p>
+    </div>
+  );
+}
+
 function OpeningSlide() {
   return (
     <div>
@@ -173,7 +225,7 @@ function WhySlide() {
     ["A summary of each call", true],
     ["Is the client happy? A 1–10 score", false],
     ["Adds up across calls and clients", false],
-    ["Real quotes, checked against the transcript", false],
+    ["The client's own words, verified against the transcript", false],
   ];
   return (
     <div>
@@ -222,8 +274,9 @@ function WhySlide() {
             <blockquote className="mt-3 border-l-2 border-zinc-300 pl-3 text-base italic dark:border-zinc-600">
               “This is the second month the report has come in late.”
             </blockquote>
-            <p className="mt-2 text-xs text-zinc-500">Client · quote found in the transcript</p>
+            <p className="mt-2 text-xs text-zinc-500">Client · verified in the transcript</p>
           </article>
+          <p className="pt-2 text-sm font-medium text-zinc-500">Built-in quality check: anything that can’t be verified is flagged</p>
           <article className={card}>
             <div className="flex flex-wrap items-center gap-2">
               <EmotionChip emotion="concern" polarity="negative" />
@@ -295,6 +348,7 @@ function HelpsSlide() {
 
 function LiveDemoSlide() {
   const pages = [
+    { href: "/fathom", label: "Fathom setup", text: "Connect once, sync your calls" },
     { href: "/", label: "Dashboard", text: "KPIs, needs attention, portfolio, topics" },
     { href: "/calls", label: "Calls", text: "Every client call, filters, Analyze" },
     { href: "/clients", label: "Clients", text: "Client health, ranked by attention" },
@@ -328,8 +382,16 @@ export const SLIDES: Slide[] = [
   {
     id: "title",
     label: "Title",
-    notes: "Introduce yourself and the goal: ten minutes on the problem and the idea, then a live demo on real calls.",
+    notes:
+      "Thanks for the time. In the next few minutes I'll first explain Fathom, because it's where our data comes from, then the problem we're solving, and then I'll show you the product live on our real calls.",
     body: <TitleSlide />,
+  },
+  {
+    id: "fathom",
+    label: "Fathom",
+    notes:
+      "Before the product, a quick word on Fathom, because everything starts there. Fathom is an AI note-taker that joins our client calls on Zoom, Google Meet or Teams, and every team member has their own account. During the call it records the conversation, and afterwards it gives us a full transcript of who said what and when, the list of people on the calendar invite, and the meeting title and time. So Fathom is our input: it captures what was said. And that's exactly where our platform takes over, because it reads all of that and tells us how the client actually felt, and where we need to act.",
+    body: <FathomSlide />,
   },
   {
     id: "opening",
@@ -349,7 +411,7 @@ export const SLIDES: Slide[] = [
     id: "why",
     label: "Why",
     notes:
-      "Fathom already gives a summary per call, but a summary doesn't tell you whether the client is happy, and it doesn't add up across calls or clients. So instead of building another note-taker, I built a layer on top of Fathom. It pulls in the calls we already record, then scores client sentiment from 1 to 10, and backs every score with real quotes from the transcript. Because every quote is checked against the transcript, we're not just trusting the AI. And if a quote can't be matched, the platform says so clearly and never shows it as evidence.",
+      "Fathom already gives us a summary of each call, but a summary doesn't tell us whether the client is happy, and it doesn't add up across calls or clients. So instead of building another note-taker, I built an intelligence layer on top of Fathom. It pulls in the calls we already record, scores client sentiment from 1 to 10, and backs every score with the client's own words from the transcript. Every quote is verified against the transcript automatically, so each insight comes with evidence anyone can open in one click. And that verification is a built-in quality check: anything that can't be verified is clearly flagged, so the team always acts on exactly what the client said.",
     body: <WhySlide />,
   },
   {
@@ -369,7 +431,8 @@ export const SLIDES: Slide[] = [
   {
     id: "demo",
     label: "Demo",
-    notes: "So that's the idea. Now let me show you the product itself, starting with the dashboard a manager sees first.",
+    notes:
+      "So that's the idea. Now let me show you the product itself, starting with how someone connects Fathom, and then the dashboard a manager sees first. (Draw with Alt+D, boxes with Alt+B, laser with Alt+L, clear with Alt+C, stop with Esc. If something misbehaves: \"That one's a slip on our side, not the approach. I've noted it, and catching exactly this kind of thing is what the pilot is for, so the version your team uses is solid.\" Then move on to the next screen.)",
     body: <LiveDemoSlide />,
   },
 ];

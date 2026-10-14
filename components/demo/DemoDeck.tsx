@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Maximize, NotebookText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize, NotebookText, PenLine } from "lucide-react";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { ANNOTATE_EVENT, Annotator } from "@/components/Annotator";
 import { iconButtonClass } from "@/components/ui";
 import { SLIDES } from "./slides";
 
@@ -45,6 +46,7 @@ export function DemoDeck() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <Annotator resetKey={slide.id} />
       <div className="h-1 w-full bg-zinc-200 dark:bg-zinc-800" aria-hidden>
         <div className="h-full bg-indigo-600 transition-[width] duration-300 dark:bg-indigo-500" style={{ width: `${(index / LAST) * 100}%` }} />
       </div>
@@ -95,6 +97,15 @@ export function DemoDeck() {
           className={`${iconButtonClass} ${notes ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : ""}`}
         >
           <NotebookText className="h-4 w-4" aria-hidden />
+        </button>
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent(ANNOTATE_EVENT, { detail: "pen" }))}
+          title="Draw: pen (D), box (B), laser (L), clear (C), stop (Esc)"
+          aria-label="Draw on the slide"
+          className={iconButtonClass}
+        >
+          <PenLine className="h-4 w-4" aria-hidden />
         </button>
         <button type="button" onClick={() => void toggleFullscreen()} title="Full screen (F)" aria-label="Full screen" className={iconButtonClass}>
           <Maximize className="h-4 w-4" aria-hidden />

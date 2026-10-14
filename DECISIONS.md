@@ -73,3 +73,4 @@ One line per choice made while building without questions.
 ## Pitch deck
 
 - `/demo` is a hard-coded slide deck (sample data only) for pitching the product: arrow keys move, N toggles speaker notes, F goes full screen, and the slide number lives in the URL hash. It is the one page reachable without signing in, because it holds no real data.
+- The deck opens with a Fathom slide (our input data) and words the quote check as a built-in quality check. A presenter overlay (`components/Annotator.tsx`) draws freehand, boxes and a laser pointer on the deck (D, B, L, C, Esc) and on every app page (the same keys with Alt/Option, so normal typing never triggers it); drawings clear when the slide or page changes.
